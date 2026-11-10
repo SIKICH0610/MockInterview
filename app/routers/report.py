@@ -35,7 +35,20 @@ from ..models import (
     Summary,
     Teacher,
 )
+from ..report_i18n import (
+    ABILITY_ZH,
+    ability_name,
+    dim_label,
+    dim_value,
+    rl,
+    stage_name,
+    SEP_LABEL_EN,
+    SEP_LABEL_ZH,
+    RESP_LABEL_EN,
+    RESP_LABEL_ZH,
+)
 from ..seed import STAGE_DIMS, STORY_PROMPTS
+from ..services.analysis import build_analysis
 from ..templating import templates
 
 router = APIRouter()
@@ -324,6 +337,11 @@ def report_page(stid: int, request: Request, db: Session = Depends(get_db)):
         return RedirectResponse(f"/wb/list?session_id={st.session_id}", status_code=303)
     s = st.session
 
+    rlang = request.query_params.get("rlang", "en")
+    if rlang not in ("en", "zh"):
+        rlang = "en"
+    R = rl(rlang)
+
     paper_id = s.paper_id
     if not paper_id:
         p = db.query(Paper).order_by(Paper.id).first()
@@ -409,13 +427,34 @@ def report_page(stid: int, request: Request, db: Session = Depends(get_db)):
         )
         gen[stage] = row
 
-    # multi-dimension rubric values per stage, in sheet order
+    # multi-dimension rubric values per stage, in sheet order (localized),
+    # plus tier classification for the auto analysis (option lists are
+    # ordered best -> weakest in seed.STAGE_DIMS)
     dim_raw = {(o.stage, o.dim): o.response for o in obs if o.dim and o.response}
     stage_dim_values = {}
+    dim_strength_labels, dim_growth_labels = [], []
+    has_dims = False
     for stage, dims in STAGE_DIMS.items():
-        vals = [(label, dim_raw[(stage, key)]) for key, label, _ in dims if (stage, key) in dim_raw]
+        vals = []
+        for key, label, options in dims:
+            raw = dim_raw.get((stage, key))
+            if raw is None:
+                continue
+            has_dims = True
+            vals.append((dim_label(rlang, label), dim_value(rlang, raw)))
+            if raw in options:
+                idx = options.index(raw)
+                loc = dim_label(rlang, label)
+                if idx == 0 and loc not in dim_strength_labels:
+                    dim_strength_labels.append(loc)
+                elif idx == len(options) - 1 and loc not in dim_growth_labels:
+                    dim_growth_labels.append(loc)
         if vals:
             stage_dim_values[stage] = vals
+    # a label rated top in one stage and bottom in another is mixed — drop both
+    mixed = set(dim_strength_labels) & set(dim_growth_labels)
+    dim_strength_labels = [x for x in dim_strength_labels if x not in mixed]
+    dim_growth_labels = [x for x in dim_growth_labels if x not in mixed]
 
     gen_done = sum(1 for v in gen.values() if v and v.response == "independent")
     gen_any = sum(1 for v in gen.values() if v)
@@ -426,8 +465,8 @@ def report_page(stid: int, request: Request, db: Session = Depends(get_db)):
     cmp_to = request.query_params.get("to", "")
     if cmp_mode == "paper":
         sess_ids = [x.id for x in db.query(AssessSession).filter_by(paper_id=paper_id).all()]
-        cmp_label = "Paper average"
-        cmp_desc = "all sessions using this paper"
+        cmp_label = R["cmp_paper"]
+        cmp_desc = R["cmp_desc_paper"]
     elif cmp_mode == "range" and cmp_from and cmp_to:
         sess_ids = [
             x.id
@@ -441,13 +480,13 @@ def report_page(stid: int, request: Request, db: Session = Depends(get_db)):
         ]
         if s.id not in sess_ids:
             sess_ids.append(s.id)
-        cmp_label = f"Avg {cmp_from} ~ {cmp_to}"
-        cmp_desc = f"sessions on this paper dated {cmp_from} to {cmp_to}"
+        cmp_label = R["cmp_range"].format(f=cmp_from, t=cmp_to)
+        cmp_desc = R["cmp_desc_range"].format(f=cmp_from, t=cmp_to)
     else:
         cmp_mode = "session"
         sess_ids = [s.id]
-        cmp_label = "Session average"
-        cmp_desc = "this session"
+        cmp_label = R["cmp_session"]
+        cmp_desc = R["cmp_desc_session"]
 
     cohort, _mcodes, _ecodes = _cohort_rows(db, sess_ids, st.level, paper_id)
     dims = {
@@ -474,11 +513,12 @@ def report_page(stid: int, request: Request, db: Session = Depends(get_db)):
             abilities.append(
                 {
                     "name": name,
+                    "disp": ability_name(rlang, name),
                     "score": expr_sum,
                     "max": expr_max,
                     "pct": pct,
                     "avg_pct": expr_avg,
-                    "evidence": f"Oral responses across {expr_qn} math tasks ({expr_obs} observed)",
+                    "evidence": R["expr_evidence"].format(n=expr_qn, o=expr_obs),
                     "observed": expr_obs > 0,
                 }
             )
@@ -491,6 +531,7 @@ def report_page(stid: int, request: Request, db: Session = Depends(get_db)):
         abilities.append(
             {
                 "name": name,
+                "disp": ability_name(rlang, name),
                 "score": r.academic if observed else None,
                 "max": 2,
                 "pct": (r.academic / 2) if observed else None,
@@ -500,7 +541,64 @@ def report_page(stid: int, request: Request, db: Session = Depends(get_db)):
             }
         )
     radar = _radar_svg(
-        [(a["name"], a["pct"], a["avg_pct"]) for a in abilities], st.name, cmp_label
+        [(a["disp"], a["pct"], a["avg_pct"]) for a in abilities], st.name, cmp_label
+    )
+
+    # cover highlights: star the strongest observed abilities
+    observed_p = [a for a in abilities if a["pct"] is not None]
+    if observed_p:
+        best = max(a["pct"] for a in observed_p)
+        if best >= 0.75:
+            for a in observed_p:
+                a["is_top"] = a["pct"] == best
+
+    # hide the notes column entirely when nobody wrote notes
+    math_has_notes = any(r and r.note for _, r in math_rows)
+    eng_has_notes = any(r and r.note for _, r in eng_rows)
+
+    # rule-based bilingual analysis paragraphs
+    _chal_m, _noobs_m, _str_m = [], [], []
+    for q, r in math_rows:
+        if _scored(r) and r.academic == 2:
+            _str_m.append(ability_name(rlang, q.ability))
+        elif (_scored(r) and r.academic == 0) or (r and r.status == "not_completed"):
+            _chal_m.append(f"“{q.title}”" if rlang == "zh" else q.title)
+        elif r and r.status == "not_observed":
+            _noobs_m.append(f"“{q.title}”" if rlang == "zh" else q.title)
+    _ind_e, _gui_e, _chal_e = [], [], []
+    for q, r in eng_rows:
+        title = f"“{q.title}”" if rlang == "zh" else q.title
+        if _scored(r) and r.academic == 2:
+            _ind_e.append(title)
+        elif _scored(r) and r.academic == 1:
+            _gui_e.append(title)
+        elif (_scored(r) and r.academic == 0) or (r and r.status == "not_completed"):
+            _chal_e.append(title)
+    analysis = build_analysis(
+        rlang,
+        st.name,
+        math_total=math_total,
+        math_max=math_max,
+        indep=indep,
+        guided=guided,
+        math_strengths=list(dict.fromkeys(_str_m)),
+        math_challenges=_chal_m,
+        math_not_observed=_noobs_m,
+        eng_total=eng_total,
+        eng_max=eng_max,
+        eng_indep=_ind_e,
+        eng_guided=_gui_e,
+        eng_challenges=_chal_e,
+        expr_sum=expr_sum,
+        expr_max=expr_max,
+        expr_obs=expr_obs,
+        sep_resp=sep.response if sep else None,
+        dim_strengths=dim_strength_labels,
+        dim_growth=dim_growth_labels,
+        has_dims=has_dims,
+        sel_ded=sel_ded,
+        cs_ded=cs_ded,
+        n_events=len(events),
     )
 
     pdfs = (
@@ -521,6 +619,20 @@ def report_page(stid: int, request: Request, db: Session = Depends(get_db)):
             if x and teacher_names.get(x)
         }
     )
+
+    sep_map = SEP_LABEL_ZH if rlang == "zh" else SEP_LABEL_EN
+    resp_map = RESP_LABEL_ZH if rlang == "zh" else RESP_LABEL_EN
+    stage_disp = {
+        x: stage_name(rlang, x)
+        for x in (
+            list(STAGE_DIMS.keys()) + GENERAL_STAGES + ["Separation", "Circle Time"]
+            + [e.stage for e in events]
+        )
+    }
+    base_qs = f"cmp={cmp_mode}"
+    if cmp_mode == "range" and cmp_from and cmp_to:
+        base_qs += f"&from={cmp_from}&to={cmp_to}"
+    lang_urls = {x: f"?rlang={x}&{base_qs}" for x in ("en", "zh")}
 
     return templates.TemplateResponse(
         request,
@@ -553,14 +665,22 @@ def report_page(stid: int, request: Request, db: Session = Depends(get_db)):
             "cs_ded": cs_ded,
             "events": events,
             "sep": sep,
-            "sep_label": SEP_LABEL.get(sep.response) if sep else None,
+            "sep_label": sep_map.get(sep.response) if sep else None,
             "circle": circle,
             "prompts": STORY_PROMPTS,
             "gen": gen,
             "gen_done": gen_done,
             "gen_any": gen_any,
             "stage_dim_values": stage_dim_values,
-            "resp_label": RESP_LABEL,
+            "resp_label": resp_map,
+            "R": R,
+            "rlang": rlang,
+            "ability_names": ABILITY_ZH if rlang == "zh" else {},
+            "lang_urls": lang_urls,
+            "stage_disp": stage_disp,
+            "analysis": analysis,
+            "math_has_notes": math_has_notes,
+            "eng_has_notes": eng_has_notes,
             "abilities": abilities,
             "radar": radar,
             "dims": dims,
@@ -574,6 +694,18 @@ def report_page(stid: int, request: Request, db: Session = Depends(get_db)):
             "today": date.today().isoformat(),
             "active": "wb",
         },
+    )
+
+
+def _pdf_footer(st, rlang):
+    txt = rl(rlang)["pdf_footer"].format(name=st.name, lv=st.level)
+    return (
+        '<div style="width:100%;font-size:8px;color:#8A7A6D;'
+        "font-family:Arial,'Microsoft YaHei',sans-serif;padding:0 13mm;display:flex;"
+        'justify-content:space-between;">'
+        f"<span>{html_mod.escape(txt)}</span>"
+        '<span><span class="pageNumber"></span> / <span class="totalPages"></span></span>'
+        "</div>"
     )
 
 
@@ -591,9 +723,12 @@ def generate_pdf(stid: int, request: Request, db: Session = Depends(get_db)):
 
     from ..auth import make_token
 
+    rlang = request.query_params.get("rlang", "en")
+    if rlang not in ("en", "zh"):
+        rlang = "en"
     port = request.url.port or 8008
     base = os.environ.get("MI_SELF_URL", f"http://127.0.0.1:{port}")
-    url = f"{base}/report/{st.id}"
+    url = f"{base}/report/{st.id}?rlang={rlang}"
 
     try:
         from playwright.sync_api import sync_playwright
@@ -604,27 +739,22 @@ def generate_pdf(stid: int, request: Request, db: Session = Depends(get_db)):
             context.add_cookies([{"name": "auth", "value": make_token(teacher.id), "url": base}])
             page = context.new_page()
             page.goto(url, wait_until="networkidle", timeout=30000)
-            footer = (
-                '<div style="width:100%;font-size:8px;color:#8A7A6D;'
-                'font-family:Arial,sans-serif;padding:0 13mm;display:flex;'
-                'justify-content:space-between;">'
-                f"<span>{html_mod.escape(st.name)} · {st.level} Assessment Report · Think Academy Silicon Valley</span>"
-                '<span><span class="pageNumber"></span> / <span class="totalPages"></span></span>'
-                "</div>"
-            )
             pdf_bytes = page.pdf(
                 format="Letter",
                 print_background=True,
                 display_header_footer=True,
                 header_template="<span></span>",
-                footer_template=footer,
+                footer_template=_pdf_footer(st, rlang),
                 margin={"top": "13mm", "bottom": "18mm", "left": "13mm", "right": "13mm"},
             )
             browser.close()
     except Exception as e:  # noqa: BLE001
         return JSONResponse(status_code=500, content={"ok": False, "error": f"pdf_failed: {e}"})
 
-    filename = f"{st.name.replace(' ', '_')}_{st.level}_Report_{date.today().isoformat()}.pdf"
+    filename = (
+        f"{st.name.replace(' ', '_')}_{st.level}_Report_"
+        f"{'CN' if rlang == 'zh' else 'EN'}_{date.today().isoformat()}.pdf"
+    )
     row = ReportPdf(
         student_id=st.id,
         filename=filename,
@@ -740,33 +870,33 @@ def batch_archive(sid: int, request: Request, db: Session = Depends(get_db)):
             context.add_cookies([{"name": "auth", "value": make_token(me.id), "url": base}])
             page = context.new_page()
             for st in targets:
-                page.goto(f"{base}/report/{st.id}", wait_until="networkidle", timeout=30000)
-                footer = (
-                    '<div style="width:100%;font-size:8px;color:#8A7A6D;'
-                    'font-family:Arial,sans-serif;padding:0 13mm;display:flex;'
-                    'justify-content:space-between;">'
-                    f"<span>{html_mod.escape(st.name)} · {st.level} Assessment Report · Think Academy Silicon Valley</span>"
-                    '<span><span class="pageNumber"></span> / <span class="totalPages"></span></span>'
-                    "</div>"
-                )
-                pdf_bytes = page.pdf(
-                    format="Letter",
-                    print_background=True,
-                    display_header_footer=True,
-                    header_template="<span></span>",
-                    footer_template=footer,
-                    margin={"top": "13mm", "bottom": "18mm", "left": "13mm", "right": "13mm"},
-                )
-                db.add(
-                    ReportPdf(
-                        student_id=st.id,
-                        filename=f"{st.name.replace(' ', '_')}_{st.level}_Report_{date.today().isoformat()}.pdf",
-                        data=pdf_bytes,
-                        size=len(pdf_bytes),
-                        teacher_id=me.id,
+                for rlang in ("en", "zh"):
+                    page.goto(
+                        f"{base}/report/{st.id}?rlang={rlang}",
+                        wait_until="networkidle",
+                        timeout=30000,
                     )
-                )
-                pdf_count += 1
+                    pdf_bytes = page.pdf(
+                        format="Letter",
+                        print_background=True,
+                        display_header_footer=True,
+                        header_template="<span></span>",
+                        footer_template=_pdf_footer(st, rlang),
+                        margin={"top": "13mm", "bottom": "18mm", "left": "13mm", "right": "13mm"},
+                    )
+                    db.add(
+                        ReportPdf(
+                            student_id=st.id,
+                            filename=(
+                                f"{st.name.replace(' ', '_')}_{st.level}_Report_"
+                                f"{'CN' if rlang == 'zh' else 'EN'}_{date.today().isoformat()}.pdf"
+                            ),
+                            data=pdf_bytes,
+                            size=len(pdf_bytes),
+                            teacher_id=me.id,
+                        )
+                    )
+                    pdf_count += 1
             browser.close()
     except Exception as e:  # noqa: BLE001
         db.commit()

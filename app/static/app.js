@@ -513,11 +513,13 @@
     const to = document.getElementById("cmp-to");
     const go = () => {
       const v = cmpSel.value;
+      const rlang = new URLSearchParams(location.search).get("rlang");
       let url = location.pathname + "?cmp=" + v;
       if (v === "range") {
         if (!from.value || !to.value) return;
         url += "&from=" + from.value + "&to=" + to.value;
       }
+      if (rlang) url += "&rlang=" + rlang;
       location.href = url;
     };
     cmpSel.addEventListener("change", () => {
@@ -577,13 +579,15 @@
     });
   }
 
-  const pdfBtn = document.getElementById("pdf-btn");
-  if (pdfBtn) {
+  document.querySelectorAll(".pdf-btn").forEach((pdfBtn) => {
     pdfBtn.addEventListener("click", async () => {
       pdfBtn.disabled = true;
       pdfBtn.textContent = pdfBtn.dataset.busy;
       const sid = document.body.dataset.student;
-      const r = await fetch("/report/" + sid + "/pdf", { method: "POST" });
+      const r = await fetch(
+        "/report/" + sid + "/pdf?rlang=" + (pdfBtn.dataset.rlang || "en"),
+        { method: "POST" }
+      );
       let j = {};
       try { j = await r.json(); } catch (e) { /* ignore */ }
       pdfBtn.disabled = false;
@@ -608,7 +612,7 @@
         alert((list ? list.dataset.failed : "PDF failed: ") + (j.error || r.status));
       }
     });
-  }
+  });
 
   const sumSave = document.getElementById("summary-save");
   if (sumSave) {

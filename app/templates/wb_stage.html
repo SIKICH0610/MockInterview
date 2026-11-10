@@ -8,7 +8,7 @@
     <div class="dim-label">{{ label }}</div>
     <div class="dim-opts">
       {% for opt in options %}
-      <button type="button" class="dim-opt {{ 'on' if vals.get((st.id, key)) == opt }}"
+      <button type="button" class="dim-opt {{ 'do-good' if loop.first else ('do-low' if loop.last else 'do-mid') }} {{ 'on' if vals.get((st.id, key)) == opt }}"
               data-dim="{{ key }}" data-val="{{ opt }}">{{ opt }}</button>
       {% endfor %}
     </div>
