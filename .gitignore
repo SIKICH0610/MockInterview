@@ -1,5 +1,9 @@
-# 本地数据与密钥：学生数据库 app.db、OpenAI 密钥 openai_key.txt、会话签名 secret.key —— 永不入库
-data/
+# 真实密钥永不入库（GitHub 会扫描泄露的 API key）；app.db 当前为演示数据，随仓库同步。
+# 注意：两台电脑都改动 app.db 时 git 无法合并，后推的会冲突——以一边为准。
+# 若将来录入真实学生数据，把下面一行换回 data/ 整目录排除。
+data/openai_key.txt
+data/anthropic_key.txt
+data/*.key
 
 # 下载的二进制工具（cloudflared 约 53MB，新电脑按 README 重新下载）
 tools/
