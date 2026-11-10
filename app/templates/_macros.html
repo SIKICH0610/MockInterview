@@ -49,12 +49,10 @@
   <div class="qcard-head">
     <a class="stname" href="/wb/student/{{ st.id }}">{{ st.name }}</a>
     <span class="lv-badge lv-{{ st.level }}">{{ st.level }}</span>
-    <button type="button" class="note-btn {{ 'has-note' if r and r.note }}">{{ t('btn.note') }}</button>
     <span class="save-ind"></span>
   </div>
   {% else %}
   <div class="qcard-head slim">
-    <button type="button" class="note-btn {{ 'has-note' if r and r.note }}">{{ t('btn.note') }}</button>
     <span class="save-ind"></span>
   </div>
   {% endif %}
@@ -102,7 +100,7 @@
   </div>
   {% endif %}
 
-  <div class="note-wrap {{ 'open' if r and r.note }}">
+  <div class="note-wrap open">
     <textarea class="note-ta" placeholder="{{ t('note.placeholder') }}">{{ r.note if r else '' }}</textarea>
   </div>
   <div class="qcard-foot">
