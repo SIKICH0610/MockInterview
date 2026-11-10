@@ -59,7 +59,7 @@
   <div class="ctrl-row">
     <span class="ctrl-label">{{ t('macro.task') }}</span>
     <div class="btn-group">
-      {% for v in [0, 1, 2] %}
+      {% for v in [2, 1, 0] %}
       <button type="button" class="sbtn {{ ['sb-low', 'sb-mid', 'sb-good'][v] }} {{ 'on' if r and r.academic == v and r.status != 'not_observed' and r.status != 'not_completed' }}"
               data-kind="a" data-val="{{ v }}">
         <span class="sbtn-num">{{ v }}</span>
@@ -73,7 +73,7 @@
   <div class="ctrl-row">
     <span class="ctrl-label">{{ t('macro.expr') }}</span>
     <div class="btn-group">
-      {% for v in [0, 1, 2] %}
+      {% for v in [2, 1, 0] %}
       <button type="button" class="sbtn sbtn-e {{ ['sb-low', 'sb-mid', 'sb-good'][v] }} {{ 'on' if r and r.expression == v and r.status != 'not_observed' and r.status != 'not_completed' }}"
               data-kind="e" data-val="{{ v }}">
         <span class="sbtn-num">{{ v }}</span>
