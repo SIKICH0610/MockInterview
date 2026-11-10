@@ -51,20 +51,22 @@ STAGES = [
 
 # Multi-dimension observation rubric for the group activities,
 # digitized from the legacy paper "Group" scoring sheet.
+# Three tiers per dimension (best / middle / weakest): four-tier scales
+# made the two middle options too vague to choose between.
 _HANDCRAFT_DIMS = [
-    ("follow", "Follow Instruction", ["Always", "Most of Time", "Need Reminder", "Cannot Follow"]),
-    ("motor", "Fine Motor Skills", ["Good", "Fair", "Limited", "Poor"]),
-    ("sharing", "Sharing Tool", ["Good", "Fair", "Limited", "Cannot Share"]),
-    ("problem", "Problem Solving", ["Good", "Fair", "Limited", "Cannot Solve"]),
+    ("follow", "Follow Instruction", ["Always", "Need Reminder", "Cannot Follow"]),
+    ("motor", "Fine Motor Skills", ["Good", "Fair", "Needs Support"]),
+    ("sharing", "Sharing Tool", ["Good", "Fair", "Cannot Share"]),
+    ("problem", "Problem Solving", ["Good", "Fair", "Cannot Solve"]),
     ("creativity", "Creativity", ["Design Sth New", "Similar to Example", "Same as Example"]),
     ("attitude", "General Attitude", ["Good", "Fair", "Passive"]),
 ]
 
 _SELF_INTRO_DIMS = [  # legacy sheet: Self Introduction block
     ("initiative", "Initiative to Participate (Raise Hand)", ["Yes", "No"]),
-    ("confidence", "Confidence", ["Confident", "Moderate Confident", "Little Nervous", "Very Nervous"]),
-    ("fluency", "Expression Fluency", ["Fluent", "Moderate Fluency", "Limited Fluency", "Cannot Complete"]),
-    ("listen", "Listen to Others", ["Good", "Fair", "Limited", "Cannot Focus"]),
+    ("confidence", "Confidence", ["Confident", "A Little Nervous", "Very Nervous"]),
+    ("fluency", "Expression Fluency", ["Fluent", "Limited Fluency", "Cannot Complete"]),
+    ("listen", "Listen to Others", ["Good", "Fair", "Cannot Focus"]),
 ]
 
 STAGE_DIMS = {
@@ -73,10 +75,10 @@ STAGE_DIMS = {
     # speaking rubric by default; both are editable per paper.
     "Show & Share": _SELF_INTRO_DIMS,
     "Circle Time": [  # legacy sheet: Story Time
-        ("participation", "Participation", ["Active", "Engaged", "Passive", "Disengaged"]),
-        ("focus", "Focus", ["Good", "Fair", "Limited", "Cannot Focus"]),
-        ("listen", "Listen to Others", ["Always", "Most of Time", "Need Reminder", "Cannot Listen"]),
-        ("empathy", "Empathy", ["Good", "Fair", "Limited", "Cannot Empathize"]),
+        ("participation", "Participation", ["Active", "Moderately Engaged", "Disengaged"]),
+        ("focus", "Focus", ["Good", "Fair", "Cannot Focus"]),
+        ("listen", "Listen to Others", ["Always", "Need Reminder", "Cannot Listen"]),
+        ("empathy", "Empathy", ["Good", "Fair", "Limited"]),
     ],
     "Cutting & Drawing": _HANDCRAFT_DIMS,
     "Ticket Making": _HANDCRAFT_DIMS,

@@ -294,7 +294,7 @@ input:focus, select:focus, textarea:focus { outline: 2px solid var(--accent-2); 
 .obs-note-txt { color: var(--muted); }
 .obs-del { margin-left: auto; border: none; background: none; color: var(--muted); font-size: 17px; cursor: pointer; padding: 2px 8px; }
 .obs-del:hover { color: var(--danger); }
-.sep-pills { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; margin-bottom: 7px; }
+.sep-pills { display: grid; grid-template-columns: repeat(3, 1fr); gap: 5px; margin-bottom: 7px; }
 .sep-pill {
   border: 1.2px solid var(--line); background: #fff; color: var(--ink); border-radius: 9px;
   padding: 8px 10px; font-size: 12.5px; font-weight: 700; cursor: pointer; text-align: center; min-height: 38px;

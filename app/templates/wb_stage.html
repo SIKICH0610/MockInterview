@@ -74,7 +74,6 @@
       <button type="button" class="sep-pill sp-good {{ 'on' if o and o.response == 'independent' }}" data-resp="independent">{{ t('sep.independent') }}</button>
       <button type="button" class="sep-pill sp-mid {{ 'on' if o and o.response == 'brief' }}" data-resp="brief">{{ t('sep.brief') }}</button>
       <button type="button" class="sep-pill sp-low {{ 'on' if o and o.response == 'support' }}" data-resp="support">{{ t('sep.support') }}</button>
-      <button type="button" class="sep-pill {{ 'on' if o and o.response == 'not_observed' }}" data-resp="not_observed">{{ t('pill.not_observed') }}</button>
     </div>
     <textarea class="sep-note" placeholder="{{ t('sep.note.placeholder') }}">{{ o.note if o else '' }}</textarea>
     <div class="qcard-foot">
