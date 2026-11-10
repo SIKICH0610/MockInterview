@@ -131,7 +131,7 @@ class StageDimDef(Base):
 
 
 class StoryPromptDef(Base):
-    """Editable Circle Time "Let's Talk" prompts, owned by a paper."""
+    """Editable Story Time "Let's Talk" prompts, owned by a paper."""
 
     __tablename__ = "story_prompt_defs"
     id = Column(Integer, primary_key=True)
@@ -183,11 +183,11 @@ class Event(Base):
 
 
 class StageObs(Base):
-    """Observations during group activities (Separation, Circle Time, ...).
+    """Observations during group activities (Separation, Story Time, ...).
 
     - Separation: one row per student (upserted), response in
       independent / brief / support / not_observed.
-    - Circle Time: append-only rows, one per response opportunity,
+    - Story Time: append-only rows, one per response opportunity,
       prompt_index 1-8 (the Let's Talk prompts), response in
       independent / prompted / none. A child with no rows for a prompt
       simply was not given that opportunity (counts as not observed).

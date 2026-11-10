@@ -93,7 +93,7 @@ def group_redirect(session_id: int = 0):
     return RedirectResponse("/wb", status_code=303)
 
 
-OBS_STAGES = ["Separation", "Self Introduction", "Circle Time", "Show & Share", "Cutting & Drawing", "Ticket Making"]
+OBS_STAGES = ["Separation", "Self Introduction", "Story Time", "Cutting & Drawing"]
 
 
 @router.get("/stage")
@@ -227,7 +227,7 @@ def review_mode(request: Request, session_id: int, db: Session = Depends(get_db)
         for o in db.query(StageObs).filter(StageObs.student_id.in_(ids)).all():
             if o.stage == "Separation":
                 sep[o.student_id] = o
-            elif o.stage == "Circle Time":
+            elif o.stage == "Story Time":
                 ct_counts[o.student_id] = ct_counts.get(o.student_id, 0) + 1
             else:
                 obs_counts[o.student_id] = obs_counts.get(o.student_id, 0) + 1

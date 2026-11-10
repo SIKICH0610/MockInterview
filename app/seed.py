@@ -26,7 +26,7 @@ M01_R = {
     "r0": "No drawing or writing",
 }
 
-# Circle Time: the 8 "LET'S TALK" response opportunities in Pip's Picnic Helpers
+# Story Time: the 8 "LET'S TALK" response opportunities in Pip's Picnic Helpers
 STORY_PROMPTS = [
     "Who do you notice? You can point or tell me.",
     "What would you bring to a picnic?",
@@ -41,10 +41,8 @@ STORY_PROMPTS = [
 STAGES = [
     "Separation",
     "Self Introduction",
-    "Circle Time",
-    "Show & Share",
+    "Story Time",
     "Cutting & Drawing",
-    "Ticket Making",
     "Station",
     "Other",
 ]
@@ -71,17 +69,13 @@ _SELF_INTRO_DIMS = [  # legacy sheet: Self Introduction block
 
 STAGE_DIMS = {
     "Self Introduction": _SELF_INTRO_DIMS,
-    # Show & Share (presenting the finished ticket) starts from the same
-    # speaking rubric by default; both are editable per paper.
-    "Show & Share": _SELF_INTRO_DIMS,
-    "Circle Time": [  # legacy sheet: Story Time
+    "Story Time": [
         ("participation", "Participation", ["Active", "Moderately Engaged", "Disengaged"]),
         ("focus", "Focus", ["Good", "Fair", "Cannot Focus"]),
         ("listen", "Listen to Others", ["Always", "Need Reminder", "Cannot Listen"]),
         ("empathy", "Empathy", ["Good", "Fair", "Limited"]),
     ],
     "Cutting & Drawing": _HANDCRAFT_DIMS,
-    "Ticket Making": _HANDCRAFT_DIMS,
 }
 
 

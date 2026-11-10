@@ -63,7 +63,7 @@ ABILITY_ORDER = [
     "Critical Thinking",
 ]
 
-GENERAL_STAGES = ["Self Introduction", "Show & Share", "Cutting & Drawing", "Ticket Making"]
+GENERAL_STAGES = ["Self Introduction", "Cutting & Drawing"]
 
 RESP_LABEL = {
     "independent": "Independent",
@@ -274,14 +274,14 @@ def collect_report_facts(db, st):
 
     prompts = paper_prompts(db, paper_id)
     for o in obs:
-        if o.stage == "Circle Time" and o.prompt_index and not o.dim:
+        if o.stage == "Story Time" and o.prompt_index and not o.dim:
             prompt = (
                 prompts[o.prompt_index - 1]
                 if o.prompt_index <= len(prompts)
                 else "story prompt"
             )
             lines.append(
-                f"Circle Time, prompt '{prompt}': {RESP_LABEL.get(o.response, o.response)}."
+                f"Story Time, prompt '{prompt}': {RESP_LABEL.get(o.response, o.response)}."
                 + (f" The child: {o.note}" if o.note else "")
             )
 
@@ -422,7 +422,7 @@ def report_page(stid: int, request: Request, db: Session = Depends(get_db)):
 
     sep = next((o for o in obs if o.stage == "Separation" and not o.dim), None)
     circle = sorted(
-        [o for o in obs if o.stage == "Circle Time" and o.prompt_index and not o.dim],
+        [o for o in obs if o.stage == "Story Time" and o.prompt_index and not o.dim],
         key=lambda o: (o.prompt_index or 0),
     )
     gen = {}
@@ -638,7 +638,7 @@ def report_page(stid: int, request: Request, db: Session = Depends(get_db)):
     stage_disp = {
         x: stage_name(rlang, x)
         for x in (
-            list(dims_map.keys()) + GENERAL_STAGES + ["Separation", "Circle Time"]
+            list(dims_map.keys()) + GENERAL_STAGES + ["Separation", "Story Time"]
             + [e.stage for e in events]
         )
     }

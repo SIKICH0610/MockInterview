@@ -338,7 +338,7 @@
         const payload = {
           student_id: parseInt(card.dataset.student, 10),
           stage: stageName,
-          prompt_index: stageName === "Circle Time" && promptChip ? parseInt(promptChip.dataset.idx, 10) : null,
+          prompt_index: stageName === "Story Time" && promptChip ? parseInt(promptChip.dataset.idx, 10) : null,
           response: rb.dataset.resp,
           note: noteInput ? noteInput.value.trim() : "",
           teacher_id: teacherId,

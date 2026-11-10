@@ -1,7 +1,7 @@
 """Paper-owned group-activity evaluation content.
 
 The dimensions/option vocabularies (formerly seed.STAGE_DIMS) and the
-Circle Time "Let's Talk" prompts (formerly seed.STORY_PROMPTS) now live
+Story Time "Let's Talk" prompts (formerly seed.STORY_PROMPTS) now live
 in the database per paper, editable in the paper admin. seed.py keeps
 the originals as the defaults that every paper starts from.
 """
@@ -14,7 +14,7 @@ from .report_i18n import DIM_LABEL_ZH, DIM_VALUE_ZH
 from .seed import STAGE_DIMS, STORY_PROMPTS
 
 # stages that carry a rubric, in canonical display order
-DIM_STAGE_ORDER = ["Self Introduction", "Circle Time", "Show & Share", "Cutting & Drawing", "Ticket Making"]
+DIM_STAGE_ORDER = ["Self Introduction", "Story Time", "Cutting & Drawing"]
 
 
 def ensure_paper_defaults(db, paper_id):

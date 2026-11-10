@@ -20,12 +20,14 @@ ABILITY_ZH = {
 STAGE_ZH = {
     "Separation": "入场分离",
     "Self Introduction": "自我介绍",
-    "Circle Time": "绘本圆圈",
-    "Show & Share": "展示分享",
+    "Story Time": "绘本故事",
     "Cutting & Drawing": "剪纸绘画",
-    "Ticket Making": "门票制作",
     "Station": "小组活动",
     "Other": "其他",
+    # legacy stage names (records created before the 4-stage layout)
+    "Circle Time": "绘本圆圈",
+    "Show & Share": "展示分享",
+    "Ticket Making": "门票制作",
 }
 
 SEP_LABEL_EN = {
@@ -216,8 +218,8 @@ _EN = {
     "grp_sub": "Observed from Separation onward",
     "grp_explain": "Teachers observed each child through the group activities and rated what they saw on a shared rubric; ratings describe this one session.",
     "not_recorded": "Not recorded",
-    "circle_overall": "Circle Time · overall ratings",
-    "circle_story": "Circle Time · story responses",
+    "circle_overall": "Story Time · overall ratings",
+    "circle_story": "Story Time · story responses",
     "th_prompt": "Prompt",
     "th_response": "Response",
     "th_said": "What the child said / did",
@@ -321,8 +323,8 @@ _ZH = {
     "grp_sub": "自入场分离起全程观察",
     "grp_explain": "老师在集体环节中按统一量表记录每位孩子的表现；评价仅描述本场观察。",
     "not_recorded": "未记录",
-    "circle_overall": "绘本圆圈 · 整体评价",
-    "circle_story": "绘本圆圈 · 逐题回应",
+    "circle_overall": "绘本故事 · 整体评价",
+    "circle_story": "绘本故事 · 逐题回应",
     "th_prompt": "提问",
     "th_response": "回应",
     "th_said": "孩子的表现",

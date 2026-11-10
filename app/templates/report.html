@@ -272,10 +272,10 @@
       {% endfor %}
     </div>
 
-    {% if stage_dim_values.get('Circle Time') %}
+    {% if stage_dim_values.get('Story Time') %}
     <div class="rp-dim-head" style="margin-top:14px">{{ R.circle_overall }}</div>
     <div class="rp-dims rp-dims-row">
-      {% for label, value in stage_dim_values['Circle Time'] %}
+      {% for label, value in stage_dim_values['Story Time'] %}
       <div class="rp-dim-line"><span class="rp-dim-k">{{ label }}</span><b>{{ value }}</b></div>
       {% endfor %}
     </div>
