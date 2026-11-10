@@ -39,7 +39,7 @@ python -m uvicorn app.main:app --host 0.0.0.0 --port 8008
 
 - 题库：TK/K 各 12 题（M01–M06 + E01–E06），评分标准原文取自官方题卡 SCORE 页，存在 `questions` 表
 - 所有打分即时自动保存；并发冲突用版本号保护（旧版本提交返回 409，不会静默覆盖）
-- `Not observed` / `Not completed` 与 0 分严格区分
+- 未作答的题保持空白（复核矩阵高亮缺项），不会被算成 0 分；历史数据中的 `Not observed` / `Not completed` 状态在报告/统计里仍单独显示（个面录入界面已简化为 0/1/2 + 备注）
 - 数据库：`data/app.db`（SQLite）。接入中台内部库时设置环境变量 `MI_DATABASE_URL` 即可
 - `sample_students.csv` 是导入格式示例
 

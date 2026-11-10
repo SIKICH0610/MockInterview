@@ -49,10 +49,14 @@
   <div class="qcard-head">
     <a class="stname" href="/wb/student/{{ st.id }}">{{ st.name }}</a>
     <span class="lv-badge lv-{{ st.level }}">{{ st.level }}</span>
+    <button type="button" class="note-btn {{ 'has-note' if r and r.note }}">{{ t('btn.note') }}</button>
     <span class="save-ind"></span>
   </div>
   {% else %}
-  <div class="qcard-head slim"><span class="save-ind"></span></div>
+  <div class="qcard-head slim">
+    <button type="button" class="note-btn {{ 'has-note' if r and r.note }}">{{ t('btn.note') }}</button>
+    <span class="save-ind"></span>
+  </div>
   {% endif %}
   <div class="conflict-bar"></div>
 
@@ -97,12 +101,6 @@
     </div>
   </div>
   {% endif %}
-
-  <div class="ctrl-row pills-row">
-    <button type="button" class="pill {{ 'on' if r and r.status == 'not_observed' }}" data-status="not_observed">{{ t('pill.not_observed') }}</button>
-    <button type="button" class="pill {{ 'on' if r and r.status == 'not_completed' }}" data-status="not_completed">{{ t('pill.not_completed') }}</button>
-    <button type="button" class="note-btn {{ 'has-note' if r and r.note }}">{{ t('btn.note') }}</button>
-  </div>
 
   <div class="note-wrap {{ 'open' if r and r.note }}">
     <textarea class="note-ta" placeholder="{{ t('note.placeholder') }}">{{ r.note if r else '' }}</textarea>

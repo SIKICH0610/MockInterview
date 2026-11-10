@@ -244,6 +244,8 @@ input:focus, select:focus, textarea:focus { outline: 2px solid var(--accent-2); 
   font-weight: 700; cursor: pointer; padding: 8px; min-height: 38px;
 }
 .note-btn.has-note::after { content: " •"; }
+.qcard-head .note-btn { min-height: 0; padding: 2px 6px; }
+.qcard-head .save-ind { margin-left: 0; }
 .note-wrap { display: none; margin-top: 4px; }
 .note-wrap.open { display: block; }
 .note-ta { width: 100%; font-size: 14px; }
