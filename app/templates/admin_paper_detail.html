@@ -26,4 +26,51 @@
   </table>
 </div>
 {% endfor %}
+
+<div class="card">
+  <div class="card-head"><span class="sec-num">GA</span> {{ t('papers.stage_section') }}</div>
+  <p class="muted small">{{ t('papers.dims_note') }}</p>
+
+  <div class="dimedit-block">
+    <div class="rubric-head">{{ t('papers.prompts_head') }}</div>
+    <form method="post" action="/admin/papers/{{ p.id }}/prompts">
+      <textarea name="text" rows="{{ [prompts | length + 1, 9] | min }}" class="dimedit-ta">{{ prompts | join('\n') }}</textarea>
+      <div class="dimedit-bar"><button class="btn btn-sm" type="submit">{{ t('btn.save') }}</button></div>
+    </form>
+  </div>
+
+  {% for stage, dlist in dims.items() %}
+  <div class="dimedit-block">
+    <div class="rubric-head">{{ t('stage.' ~ stage) }} <span class="muted small">· {{ stage }}</span></div>
+    <form method="post" action="/admin/papers/{{ p.id }}/dims">
+      <input type="hidden" name="stage" value="{{ stage }}">
+      {% for d in dlist %}
+      <div class="dimedit-row">
+        <input type="hidden" name="key" value="{{ d.key }}">
+        <div class="dimedit-labels">
+          <label>{{ t('papers.dim_label') }}<input type="text" name="label" value="{{ d.label }}"></label>
+          <label>{{ t('papers.dim_label_zh') }}<input type="text" name="label_zh" value="{{ d.label_zh }}"></label>
+          <label class="dimedit-del"><input type="checkbox" name="del_{{ d.key }}" value="1"> {{ t('papers.dim_delete') }}</label>
+        </div>
+        <label class="dimedit-opts">{{ t('papers.dim_options') }}
+          <textarea name="options" rows="{{ d.options | length }}">{% for en, zh in d.options %}{{ en }}{% if zh %} | {{ zh }}{% endif %}
+{% endfor %}</textarea>
+        </label>
+      </div>
+      {% endfor %}
+      <div class="dimedit-row dimedit-new">
+        <div class="dimedit-labels">
+          <span class="dimedit-new-tag">{{ t('papers.dim_new') }}</span>
+          <label>{{ t('papers.dim_label') }}<input type="text" name="new_label" value=""></label>
+          <label>{{ t('papers.dim_label_zh') }}<input type="text" name="new_label_zh" value=""></label>
+        </div>
+        <label class="dimedit-opts">{{ t('papers.dim_options') }}
+          <textarea name="new_options" rows="3" placeholder="Good | 良好&#10;Fair | 一般&#10;Limited | 有限"></textarea>
+        </label>
+      </div>
+      <div class="dimedit-bar"><button class="btn btn-sm" type="submit">{{ t('btn.save') }}</button></div>
+    </form>
+  </div>
+  {% endfor %}
+</div>
 {% endblock %}

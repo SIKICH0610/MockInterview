@@ -752,3 +752,22 @@ td.mx-name a:hover { color: var(--accent); }
 @media (max-width: 520px) {
   .card-grid { grid-template-columns: 1fr; }
 }
+
+/* ---------- paper group-activity editor ---------- */
+.dimedit-block { border-top: 1px dashed var(--line); margin-top: 14px; padding-top: 12px; }
+.dimedit-ta { width: 100%; font-size: 13.5px; }
+.dimedit-bar { margin-top: 8px; }
+.dimedit-row {
+  display: grid; grid-template-columns: minmax(220px, 1fr) minmax(240px, 1.2fr);
+  gap: 10px 16px; border: 1px solid var(--line); border-radius: 10px;
+  padding: 10px 12px; margin-bottom: 8px; background: #fff;
+}
+.dimedit-labels { display: flex; flex-direction: column; gap: 6px; }
+.dimedit-labels label { font-size: 12px; font-weight: 700; color: var(--muted); display: flex; flex-direction: column; gap: 3px; }
+.dimedit-labels input[type="text"] { font-size: 13.5px; }
+.dimedit-del { flex-direction: row !important; align-items: center; gap: 6px !important; color: var(--danger) !important; }
+.dimedit-opts { font-size: 12px; font-weight: 700; color: var(--muted); display: flex; flex-direction: column; gap: 3px; }
+.dimedit-opts textarea { font-size: 13px; font-family: inherit; }
+.dimedit-new { background: var(--accent-faint); }
+.dimedit-new-tag { font-size: 11px; font-weight: 900; color: var(--accent); text-transform: uppercase; letter-spacing: 0.5px; }
+@media (max-width: 760px) { .dimedit-row { grid-template-columns: 1fr; } }

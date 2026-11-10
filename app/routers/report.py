@@ -47,8 +47,8 @@ from ..report_i18n import (
     RESP_LABEL_EN,
     RESP_LABEL_ZH,
 )
-from ..seed import STAGE_DIMS, STORY_PROMPTS
 from ..services.analysis import build_analysis
+from ..stage_defs import paper_dims, paper_prompts
 from ..templating import templates
 
 router = APIRouter()
@@ -272,11 +272,12 @@ def collect_report_facts(db, st):
         lines.append(f"Separation from parents: {SEP_LABEL.get(sep.response, sep.response)}."
                      + (f" Note: {sep.note}" if sep.note else ""))
 
+    prompts = paper_prompts(db, paper_id)
     for o in obs:
         if o.stage == "Circle Time" and o.prompt_index and not o.dim:
             prompt = (
-                STORY_PROMPTS[o.prompt_index - 1]
-                if o.prompt_index <= len(STORY_PROMPTS)
+                prompts[o.prompt_index - 1]
+                if o.prompt_index <= len(prompts)
                 else "story prompt"
             )
             lines.append(
@@ -286,8 +287,12 @@ def collect_report_facts(db, st):
 
     # multi-dimension rubric ratings
     dim_raw = {(o.stage, o.dim): o.response for o in obs if o.dim and o.response}
-    for stage, dims in STAGE_DIMS.items():
-        vals = [f"{label}: {dim_raw[(stage, key)]}" for key, label, _ in dims if (stage, key) in dim_raw]
+    for stage, dims in paper_dims(db, paper_id).items():
+        vals = [
+            f"{d['label']}: {dim_raw[(stage, d['key'])]}"
+            for d in dims
+            if (stage, d["key"]) in dim_raw
+        ]
         if vals:
             lines.append(f"{stage} ratings — " + "; ".join(vals) + ".")
 
@@ -429,25 +434,33 @@ def report_page(stid: int, request: Request, db: Session = Depends(get_db)):
 
     # multi-dimension rubric values per stage, in sheet order (localized),
     # plus tier classification for the auto analysis (option lists are
-    # ordered best -> weakest in seed.STAGE_DIMS)
+    # ordered best -> weakest in the paper's rubric)
     dim_raw = {(o.stage, o.dim): o.response for o in obs if o.dim and o.response}
+    dims_map = paper_dims(db, paper_id)
     stage_dim_values = {}
     dim_strength_labels, dim_growth_labels = [], []
     has_dims = False
-    for stage, dims in STAGE_DIMS.items():
+    for stage, dlist in dims_map.items():
         vals = []
-        for key, label, options in dims:
-            raw = dim_raw.get((stage, key))
+        for d in dlist:
+            raw = dim_raw.get((stage, d["key"]))
             if raw is None:
                 continue
             has_dims = True
-            vals.append((dim_label(rlang, label), dim_value(rlang, raw)))
-            if raw in options:
-                idx = options.index(raw)
-                loc = dim_label(rlang, label)
+            if rlang == "zh":
+                loc = d["label_zh"] or dim_label("zh", d["label"])
+                pair = next(((en, zh) for en, zh in d["options"] if en == raw), None)
+                disp_val = (pair[1] if pair and pair[1] else dim_value("zh", raw))
+            else:
+                loc = dim_label("en", d["label"])
+                disp_val = dim_value("en", raw)
+            vals.append((loc, disp_val))
+            en_opts = [en for en, _ in d["options"]]
+            if raw in en_opts:
+                idx = en_opts.index(raw)
                 if idx == 0 and loc not in dim_strength_labels:
                     dim_strength_labels.append(loc)
-                elif idx == len(options) - 1 and loc not in dim_growth_labels:
+                elif idx == len(en_opts) - 1 and loc not in dim_growth_labels:
                     dim_growth_labels.append(loc)
         if vals:
             stage_dim_values[stage] = vals
@@ -625,7 +638,7 @@ def report_page(stid: int, request: Request, db: Session = Depends(get_db)):
     stage_disp = {
         x: stage_name(rlang, x)
         for x in (
-            list(STAGE_DIMS.keys()) + GENERAL_STAGES + ["Separation", "Circle Time"]
+            list(dims_map.keys()) + GENERAL_STAGES + ["Separation", "Circle Time"]
             + [e.stage for e in events]
         )
     }
@@ -667,7 +680,7 @@ def report_page(stid: int, request: Request, db: Session = Depends(get_db)):
             "sep": sep,
             "sep_label": sep_map.get(sep.response) if sep else None,
             "circle": circle,
-            "prompts": STORY_PROMPTS,
+            "prompts": paper_prompts(db, paper_id),
             "gen": gen,
             "gen_done": gen_done,
             "gen_any": gen_any,

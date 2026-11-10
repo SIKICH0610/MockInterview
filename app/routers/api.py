@@ -324,7 +324,7 @@ def upsert_stage_single(request: Request, payload: dict = Body(...), db: Session
 @router.post("/stage/dim")
 def upsert_stage_dim(request: Request, payload: dict = Body(...), db: Session = Depends(get_db)):
     """One value per (student, stage, dimension) from the group rubric."""
-    from ..seed import STAGE_DIMS
+    from ..stage_defs import paper_dims
 
     student_id = int(payload["student_id"])
     student = db.get(Student, student_id)
@@ -336,10 +336,11 @@ def upsert_stage_dim(request: Request, payload: dict = Body(...), db: Session = 
     stage = str(payload.get("stage") or "")
     dim = str(payload.get("dim") or "")
     value = str(payload.get("value") or "")
-    entry = next((d for d in STAGE_DIMS.get(stage, []) if d[0] == dim), None)
+    dims = paper_dims(db, student.session.paper_id).get(stage, [])
+    entry = next((d for d in dims if d["key"] == dim), None)
     if entry is None:
         return JSONResponse(status_code=400, content={"ok": False, "error": "bad dim"})
-    if value and value not in entry[2]:
+    if value and value not in [en for en, _ in entry["options"]]:
         return JSONResponse(status_code=400, content={"ok": False, "error": "bad value"})
 
     rows = (

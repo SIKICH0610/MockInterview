@@ -220,6 +220,24 @@ S = {
     "label.paper": ("Paper", "题库"),
     "q.edit": ("Edit question", "编辑题目"),
     "q.saved": ("Question saved", "题目已保存"),
+    "btn.save": ("Save", "保存"),
+    "papers.stage_section": ("Group-activity evaluation (follows this paper)", "集体环节评价（随题库走）"),
+    "papers.dims_note": (
+        "Options are ordered best → weakest (button colors and the report's auto analysis follow this order). "
+        "Edits apply to future scoring; records already saved keep their stored wording. "
+        "Deleting a dimension hides it from scoring and reports but does not delete recorded data.",
+        "档位按 最好 → 最弱 排列（打分按钮配色与报告自动解读都按此顺序）。"
+        "修改只影响之后的录入；已保存的记录保持原值。删除维度只是不再录入/展示，不会删除已记录的数据。",
+    ),
+    "papers.prompts_head": ("Circle Time · Let's Talk prompts (one per line)", "绘本圆圈 · Let's Talk 提问（每行一条）"),
+    "papers.dim_label": ("Dimension (EN)", "维度名（英文）"),
+    "papers.dim_label_zh": ("Dimension (中文)", "维度名（中文）"),
+    "papers.dim_options": ("Options, best first — one per line: English | 中文", "档位（最好在前），每行一个：English | 中文"),
+    "papers.dim_delete": ("Delete", "删除"),
+    "papers.dim_new": ("New dimension (leave empty to skip)", "新增维度（留空则忽略）"),
+    "papers.dims_saved": ("Group-activity rubric saved", "集体环节评价已保存"),
+    "papers.prompts_saved": ("Prompts saved", "提问已保存"),
+    "papers.prompts_empty": ("At least one prompt is required", "至少需要一条提问"),
     "q.title": ("Title", "题目名称"),
     "q.prompt": ("Prompt (what the teacher says)", "题面 / 施测指令"),
     "q.domain": ("Domain", "维度"),

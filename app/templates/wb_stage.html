@@ -3,13 +3,13 @@
 
 {% macro dimblock(st, dims, vals) %}
 <div class="dim-rows">
-  {% for key, label, options in dims %}
+  {% for d in dims %}
   <div class="dim-row">
-    <div class="dim-label">{{ label }}</div>
+    <div class="dim-label">{{ d.label_zh if cur_lang() == 'zh' and d.label_zh else d.label }}</div>
     <div class="dim-opts">
-      {% for opt in options %}
-      <button type="button" class="dim-opt {{ 'do-good' if loop.first else ('do-low' if loop.last else 'do-mid') }} {{ 'on' if vals.get((st.id, key)) == opt }}"
-              data-dim="{{ key }}" data-val="{{ opt }}">{{ opt }}</button>
+      {% for en, zh in d.options %}
+      <button type="button" class="dim-opt {{ 'do-good' if loop.first else ('do-low' if loop.last else 'do-mid') }} {{ 'on' if vals.get((st.id, d.key)) == en }}"
+              data-dim="{{ d.key }}" data-val="{{ en }}">{{ zh if cur_lang() == 'zh' and zh else en }}</button>
       {% endfor %}
     </div>
   </div>

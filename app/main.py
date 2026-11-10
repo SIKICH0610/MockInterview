@@ -133,6 +133,12 @@ def startup():
     db = SessionLocal()
     try:
         seed_questions(db)
+        from .models import Paper
+        from .stage_defs import ensure_paper_defaults
+
+        for p in db.query(Paper).all():
+            ensure_paper_defaults(db, p.id)
+        db.commit()
         admins = db.query(Teacher).filter_by(role="admin").all()
         if not any(a.password_hash for a in admins):
             admin_user = db.query(Teacher).filter_by(name="Admin").first()

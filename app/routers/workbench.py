@@ -16,7 +16,7 @@ from ..models import (
     Student,
     Teacher,
 )
-from ..seed import STAGES, STORY_PROMPTS
+from ..seed import STAGES
 from ..templating import templates
 
 router = APIRouter(prefix="/wb")
@@ -140,8 +140,9 @@ def stage_mode(
         else:
             obs_by_student.setdefault(o.student_id, []).append(o)
 
-    from ..seed import STAGE_DIMS
+    from ..stage_defs import paper_dims, paper_prompts
 
+    pid = _paper_id_for(db, s)
     teacher_names = {t.id: t.name for t in db.query(Teacher).all()}
     return templates.TemplateResponse(
         request,
@@ -156,8 +157,8 @@ def stage_mode(
             "obs_stages": OBS_STAGES,
             "obs_by_student": obs_by_student,
             "dimvals": dimvals,
-            "stage_dims": STAGE_DIMS.get(stage, []),
-            "prompts": STORY_PROMPTS,
+            "stage_dims": paper_dims(db, pid).get(stage, []),
+            "prompts": paper_prompts(db, pid),
             "teacher_names": teacher_names,
             "active": "wb",
         },

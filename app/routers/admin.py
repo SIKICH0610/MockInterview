@@ -8,7 +8,24 @@ from sqlalchemy.orm import Session
 
 from ..db import get_db
 from ..i18n import t
-from ..models import AssessSession, Group, ItemRecord, Paper, Question, Student, Teacher
+from ..models import (
+    AssessSession,
+    Group,
+    ItemRecord,
+    Paper,
+    Question,
+    StageDimDef,
+    StoryPromptDef,
+    Student,
+    Teacher,
+)
+from ..stage_defs import (
+    clone_paper_defs,
+    ensure_paper_defaults,
+    paper_dims,
+    paper_prompts,
+    slug_key,
+)
 from ..templating import templates
 
 router = APIRouter(prefix="/admin")
@@ -567,6 +584,9 @@ def create_paper(name: str = Form(...), clone_from: str = Form(""), db: Session 
                         trial_max=q.trial_max,
                     )
                 )
+            clone_paper_defs(db, src.id, p.id)
+    if not clone_from:
+        ensure_paper_defaults(db, p.id)
     db.commit()
     return _redirect(f"/admin/papers/{p.id}")
 
@@ -582,10 +602,19 @@ def paper_detail(pid: int, request: Request, msg: str = "", db: Session = Depend
     by_version = {}
     for q in questions:
         by_version.setdefault(q.version, []).append(q)
+    ensure_paper_defaults(db, pid)
+    db.commit()
     return templates.TemplateResponse(
         request,
         "admin_paper_detail.html",
-        {"p": p, "by_version": by_version, "msg": msg, "active": "admin"},
+        {
+            "p": p,
+            "by_version": by_version,
+            "dims": paper_dims(db, pid),
+            "prompts": paper_prompts(db, pid),
+            "msg": msg,
+            "active": "admin",
+        },
     )
 
 
@@ -598,6 +627,8 @@ def delete_paper(pid: int, db: Session = Depends(get_db)):
         return _redirect("/admin/papers", t("papers.in_use"))
     for q in list(p.questions):
         db.delete(q)
+    db.query(StageDimDef).filter_by(paper_id=pid).delete()
+    db.query(StoryPromptDef).filter_by(paper_id=pid).delete()
     db.delete(p)
     db.commit()
     return _redirect("/admin/papers", t("papers.deleted"))
@@ -649,6 +680,97 @@ def question_save(
     q.trial_max = int(trial_max) if trial_max.strip().isdigit() else None
     db.commit()
     return _redirect(f"/admin/papers/{q.paper_id}", t("q.saved"))
+
+
+# ---------- group-activity evaluation content (per paper) ----------
+
+def _parse_option_lines(text):
+    """One option per line, 'English | 中文' (zh optional), best first."""
+    out = []
+    for line in (text or "").splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        if "|" in line:
+            en, _, zh = line.partition("|")
+        elif "｜" in line:
+            en, _, zh = line.partition("｜")
+        else:
+            en, zh = line, ""
+        en = en.strip()
+        if en:
+            out.append([en, zh.strip()])
+    return out
+
+
+@router.post("/papers/{pid}/dims")
+async def save_paper_dims(pid: int, request: Request, db: Session = Depends(get_db)):
+    import json
+
+    p = db.get(Paper, pid)
+    if not p:
+        return _redirect("/admin/papers")
+    form = await request.form()
+    stage = str(form.get("stage") or "")
+    existing = {
+        d.key: d
+        for d in db.query(StageDimDef).filter_by(paper_id=pid, stage=stage).all()
+    }
+    keys = form.getlist("key")
+    labels = form.getlist("label")
+    labels_zh = form.getlist("label_zh")
+    options_texts = form.getlist("options")
+
+    sort = 0
+    for key, label, label_zh, opts_text in zip(keys, labels, labels_zh, options_texts):
+        label = label.strip()
+        row = existing.get(key)
+        if row is None:
+            continue
+        if form.get(f"del_{key}"):
+            db.delete(row)
+            del existing[key]
+            continue
+        opts = _parse_option_lines(opts_text)
+        if label:
+            row.label = label
+        row.label_zh = label_zh.strip()
+        if len(opts) >= 2:
+            row.options = json.dumps(opts, ensure_ascii=False)
+        row.sort = sort
+        sort += 1
+
+    new_label = str(form.get("new_label") or "").strip()
+    new_opts = _parse_option_lines(str(form.get("new_options") or ""))
+    if new_label and len(new_opts) >= 2:
+        db.add(
+            StageDimDef(
+                paper_id=pid,
+                stage=stage,
+                key=slug_key(new_label, set(existing.keys())),
+                label=new_label,
+                label_zh=str(form.get("new_label_zh") or "").strip(),
+                options=json.dumps(new_opts, ensure_ascii=False),
+                sort=sort,
+            )
+        )
+    db.commit()
+    return _redirect(f"/admin/papers/{pid}", t("papers.dims_saved"))
+
+
+@router.post("/papers/{pid}/prompts")
+def save_paper_prompts(pid: int, text: str = Form(...), db: Session = Depends(get_db)):
+    p = db.get(Paper, pid)
+    if not p:
+        return _redirect("/admin/papers")
+    lines = [line.strip() for line in text.splitlines() if line.strip()]
+    if not lines:
+        return _redirect(f"/admin/papers/{pid}", t("papers.prompts_empty"))
+    db.query(StoryPromptDef).filter_by(paper_id=pid).delete()
+    for i, line in enumerate(lines, 1):
+        db.add(StoryPromptDef(paper_id=pid, idx=i, text=line))
+    db.commit()
+    return _redirect(f"/admin/papers/{pid}", t("papers.prompts_saved"))
 
 
 # ---------- teachers ----------

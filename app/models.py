@@ -108,6 +108,40 @@ class Question(Base):
     paper = relationship("Paper", back_populates="questions")
 
 
+class StageDimDef(Base):
+    """Editable group-activity rubric dimension, owned by a paper.
+
+    options holds a JSON list ordered best -> weakest: [[en, zh], ...].
+    stage_obs.response stores the EN option string, so renaming an option
+    does not rewrite history (old rows keep their recorded wording).
+    """
+
+    __tablename__ = "stage_dim_defs"
+    __table_args__ = (UniqueConstraint("paper_id", "stage", "key"),)
+    id = Column(Integer, primary_key=True)
+    paper_id = Column(Integer, ForeignKey("papers.id"), nullable=False)
+    stage = Column(String(32), nullable=False)
+    key = Column(String(32), nullable=False)
+    label = Column(String(160), nullable=False)
+    label_zh = Column(String(160), default="")
+    options = Column(Text, nullable=False)
+    sort = Column(Integer, default=0)
+
+    paper = relationship("Paper")
+
+
+class StoryPromptDef(Base):
+    """Editable Circle Time "Let's Talk" prompts, owned by a paper."""
+
+    __tablename__ = "story_prompt_defs"
+    id = Column(Integer, primary_key=True)
+    paper_id = Column(Integer, ForeignKey("papers.id"), nullable=False)
+    idx = Column(Integer, nullable=False)
+    text = Column(Text, nullable=False)
+
+    paper = relationship("Paper")
+
+
 class ItemRecord(Base):
     __tablename__ = "item_records"
     __table_args__ = (UniqueConstraint("student_id", "code"),)
