@@ -40,6 +40,7 @@ STORY_PROMPTS = [
 
 STAGES = [
     "Separation",
+    "Self Introduction",
     "Circle Time",
     "Show & Share",
     "Cutting & Drawing",
@@ -59,13 +60,18 @@ _HANDCRAFT_DIMS = [
     ("attitude", "General Attitude", ["Good", "Fair", "Passive"]),
 ]
 
+_SELF_INTRO_DIMS = [  # legacy sheet: Self Introduction block
+    ("initiative", "Initiative to Participate (Raise Hand)", ["Yes", "No"]),
+    ("confidence", "Confidence", ["Confident", "Moderate Confident", "Little Nervous", "Very Nervous"]),
+    ("fluency", "Expression Fluency", ["Fluent", "Moderate Fluency", "Limited Fluency", "Cannot Complete"]),
+    ("listen", "Listen to Others", ["Good", "Fair", "Limited", "Cannot Focus"]),
+]
+
 STAGE_DIMS = {
-    "Show & Share": [  # legacy sheet: Self Introduction
-        ("initiative", "Initiative to Participate (Raise Hand)", ["Yes", "No"]),
-        ("confidence", "Confidence", ["Confident", "Moderate Confident", "Little Nervous", "Very Nervous"]),
-        ("fluency", "Expression Fluency", ["Fluent", "Moderate Fluency", "Limited Fluency", "Cannot Complete"]),
-        ("listen", "Listen to Others", ["Good", "Fair", "Limited", "Cannot Focus"]),
-    ],
+    "Self Introduction": _SELF_INTRO_DIMS,
+    # Show & Share (presenting the finished ticket) starts from the same
+    # speaking rubric by default; both are editable per paper.
+    "Show & Share": _SELF_INTRO_DIMS,
     "Circle Time": [  # legacy sheet: Story Time
         ("participation", "Participation", ["Active", "Engaged", "Passive", "Disengaged"]),
         ("focus", "Focus", ["Good", "Fair", "Limited", "Cannot Focus"]),

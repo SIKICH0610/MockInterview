@@ -14,28 +14,34 @@ from .report_i18n import DIM_LABEL_ZH, DIM_VALUE_ZH
 from .seed import STAGE_DIMS, STORY_PROMPTS
 
 # stages that carry a rubric, in canonical display order
-DIM_STAGE_ORDER = ["Show & Share", "Circle Time", "Cutting & Drawing", "Ticket Making"]
+DIM_STAGE_ORDER = ["Self Introduction", "Circle Time", "Show & Share", "Cutting & Drawing", "Ticket Making"]
 
 
 def ensure_paper_defaults(db, paper_id):
-    """Seed a paper's rubric + prompts from the built-in defaults (idempotent)."""
-    if not db.query(StageDimDef).filter_by(paper_id=paper_id).first():
-        for stage, dims in STAGE_DIMS.items():
-            for i, (key, label, options) in enumerate(dims):
-                db.add(
-                    StageDimDef(
-                        paper_id=paper_id,
-                        stage=stage,
-                        key=key,
-                        label=label,
-                        label_zh=DIM_LABEL_ZH.get(label, ""),
-                        options=json.dumps(
-                            [[o, DIM_VALUE_ZH.get(o, "")] for o in options],
-                            ensure_ascii=False,
-                        ),
-                        sort=i,
-                    )
+    """Seed a paper's rubric + prompts from the built-in defaults.
+
+    Idempotent per stage: a stage the paper already has rows for is left
+    alone (edits survive), while a stage newly added to the product gets
+    its default dimensions backfilled into existing papers.
+    """
+    for stage, dims in STAGE_DIMS.items():
+        if db.query(StageDimDef).filter_by(paper_id=paper_id, stage=stage).first():
+            continue
+        for i, (key, label, options) in enumerate(dims):
+            db.add(
+                StageDimDef(
+                    paper_id=paper_id,
+                    stage=stage,
+                    key=key,
+                    label=label,
+                    label_zh=DIM_LABEL_ZH.get(label, ""),
+                    options=json.dumps(
+                        [[o, DIM_VALUE_ZH.get(o, "")] for o in options],
+                        ensure_ascii=False,
+                    ),
+                    sort=i,
                 )
+            )
     if not db.query(StoryPromptDef).filter_by(paper_id=paper_id).first():
         for i, p in enumerate(STORY_PROMPTS, 1):
             db.add(StoryPromptDef(paper_id=paper_id, idx=i, text=p))

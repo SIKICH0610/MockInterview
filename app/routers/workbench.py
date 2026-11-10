@@ -93,7 +93,7 @@ def group_redirect(session_id: int = 0):
     return RedirectResponse("/wb", status_code=303)
 
 
-OBS_STAGES = ["Separation", "Circle Time", "Show & Share", "Cutting & Drawing", "Ticket Making"]
+OBS_STAGES = ["Separation", "Self Introduction", "Circle Time", "Show & Share", "Cutting & Drawing", "Ticket Making"]
 
 
 @router.get("/stage")

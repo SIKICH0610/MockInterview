@@ -29,7 +29,7 @@ python -m uvicorn app.main:app --host 0.0.0.0 --port 8008
 2. **Admin → Sessions**：建场次（选择题库）→ **直接上传 Think Academy 班级导出表**（自动读取 userName / 学员id / gradeName / className，自动识别 TK/K，识别不了的在学生表里补选）→ **现场分组看板**：一键随机分组（TK/K 均衡）、拖 ⠿ 换组或点选换组、组上指派老师。**所有学生进组且档位齐全后才解锁打分**（流程：① 导入 → ② 分组 → ③ 打分）
    - **Admin → 题库管理**：每个场次绑定一个题库；新测评 = 复制现有题库 → 编辑题目（题面/目标/评分标准/表达/计数全可改），旧场次不受影响。**集体环节评价内容也随题库**：题库详情页底部可编辑各环节的评价维度（中英名称 + 档位词表，最好在前）与绘本圆圈 8 问（每行一条），支持增删维度；复制题库时一并复制。修改只影响之后的录入，已记录数据保持原值
 3. **Workbench**：登录后选场次（身份即登录老师），三个环节：
-   - **集体环节**（多维度评价，数字化自纸质 Group 打分表）：Separation 分离适应（三级单选 + 备注）；Circle Time（8 个 Let's Talk 提问逐条回应 **+ 整体维度** Participation/Focus/Listen/Empathy）；Show & Share（Initiative/Confidence/Fluency/Listen 四维）；剪纸绘画 与 Ticket 制作（Follow Instruction/Fine Motor/Sharing/Problem Solving/Creativity/Attitude 六维）。每维单选档位、再点取消；维度词表在题库详情页可视化编辑（`seed.py` 里的只是新题库的默认值）
+   - **集体环节**（多维度评价，数字化自纸质 Group 打分表）：Separation 分离适应（三级单选 + 备注）；自我介绍（Initiative/Confidence/Fluency/Listen 四维，紧随分离适应）；Circle Time（8 个 Let's Talk 提问逐条回应 **+ 整体维度** Participation/Focus/Listen/Empathy）；Show & Share（Initiative/Confidence/Fluency/Listen 四维）；剪纸绘画 与 Ticket 制作（Follow Instruction/Fine Motor/Sharing/Problem Solving/Creativity/Attitude 六维）。每维单选档位、再点取消；维度词表在题库详情页可视化编辑（`seed.py` 里的只是新题库的默认值）
    - **个人面试**：12 道题逐题记录，左侧学生名单栏（竖屏为抽屉）+ SEL/课堂事件。**任务得分** = 该题学术分，按钮直接标注含义（0 未能完成 / 1 引导后完成 / 2 独立完成，具体标准见题旁 SCORE 原文）；**表达得分** = 口头表达（0 无回应 / 1 单词短语 / 2 完整句子）；**答对小项** = 该题含多个小项时（如 E01 的 6 个字母）记答对个数，报告里显示为 "6/6 correct"。选最优档变绿、中间档琥珀、最低档红
    - （原「群面打分」已删除——它与集体环节重复；旧链接自动跳转集体环节）
    - **Review 汇总复核**：全场学生 × 12 题状态矩阵，缺项高亮，点格子直达补录；分离/Circle/事件计数；逐生确认复核（记录确认人与时间）

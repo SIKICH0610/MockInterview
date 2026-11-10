@@ -131,6 +131,7 @@ S = {
     "btn.stages": ("Group activities", "集体环节"),
     "stage.obs.title": ("Group activities", "集体环节观察"),
     "stage.Separation": ("Separation", "分离适应"),
+    "stage.Self Introduction": ("Self Introduction", "自我介绍"),
     "stage.Circle Time": ("Circle Time", "Circle Time"),
     "stage.Show & Share": ("Show & Share", "Show & Share"),
     "stage.Cutting & Drawing": ("Cutting & Drawing", "剪纸绘画"),

@@ -19,6 +19,7 @@ ABILITY_ZH = {
 
 STAGE_ZH = {
     "Separation": "入场分离",
+    "Self Introduction": "自我介绍",
     "Circle Time": "绘本圆圈",
     "Show & Share": "展示分享",
     "Cutting & Drawing": "剪纸绘画",

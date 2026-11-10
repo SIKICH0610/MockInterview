@@ -63,7 +63,7 @@ ABILITY_ORDER = [
     "Critical Thinking",
 ]
 
-GENERAL_STAGES = ["Show & Share", "Cutting & Drawing", "Ticket Making"]
+GENERAL_STAGES = ["Self Introduction", "Show & Share", "Cutting & Drawing", "Ticket Making"]
 
 RESP_LABEL = {
     "independent": "Independent",
