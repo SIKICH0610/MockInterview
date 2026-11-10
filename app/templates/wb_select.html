@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% block title %}{{ t('home.wb.title') }}{% endblock %}
+{% block content %}
+<div class="kicker">{{ t('wb.kicker') }}</div>
+<h1>{{ t('wb.start') }} <span class="muted-h">· {{ teacher.name }}</span></h1>
+
+{% if msg == 'gate' %}<div class="flash">{{ t('wb.gate') }}</div>
+{% elif msg == 'admin_only' %}<div class="flash">{{ t('login.admin_only') }}</div>{% endif %}
+
+<div class="card">
+  <form class="select-form" method="get" action="/wb/stage">
+    <label>{{ t('label.session') }}
+      <select name="session_id" required>
+        {% for se in sessions %}<option value="{{ se.id }}">{{ se.date }} · {{ se.label }}</option>{% endfor %}
+      </select>
+    </label>
+    <div class="select-actions sa-3">
+      <button class="btn btn-big btn-ghost" type="submit" formaction="/wb/stage">{{ t('btn.stages') }}</button>
+      <button class="btn btn-big btn-ghost" type="submit" formaction="/wb/list">{{ t('btn.individual') }}</button>
+      <button class="btn btn-big" type="submit" formaction="/wb/review">{{ t('btn.review') }}</button>
+    </div>
+  </form>
+  {% if not sessions %}<p class="muted">{{ t('wb.no_sessions') }} <a href="/admin/sessions">{{ t('wb.console') }}</a>{{ t('wb.console_suffix') }}</p>{% endif %}
+</div>
+{% endblock %}

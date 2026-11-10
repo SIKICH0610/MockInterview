@@ -1,0 +1,100 @@
+{% extends "base.html" %}
+{% block title %}{{ t('stats.title') }}{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <div class="kicker"><a href="/admin/sessions">{{ t('nav.admin') | upper }}</a></div>
+    <h1>{{ t('stats.title') }}</h1>
+  </div>
+</div>
+<p class="stage-hint">{{ t('stats.hint') }}</p>
+
+<div class="card">
+  <form class="inline-form" method="get" action="/admin/stats" id="stats-form">
+    <label>{{ t('report.cmp.title') }}
+      <select name="scope" id="stats-scope">
+        <option value="session" {{ 'selected' if scope == 'session' }}>{{ t('stats.scope.session') }}</option>
+        <option value="paper" {{ 'selected' if scope == 'paper' }}>{{ t('stats.scope.paper') }}</option>
+        <option value="range" {{ 'selected' if scope == 'range' }}>{{ t('stats.scope.range') }}</option>
+      </select>
+    </label>
+    <label class="sf sf-session">{{ t('label.session') }}
+      <select name="session_id">
+        {% for se in sessions %}<option value="{{ se.id }}" {{ 'selected' if sel_session == se.id }}>{{ se.date }} · {{ se.label }}</option>{% endfor %}
+      </select>
+    </label>
+    <label class="sf sf-paper sf-range">{{ t('label.paper') }}
+      <select name="stats_paper_id">
+        <option value="0">—</option>
+        {% for p in papers %}<option value="{{ p.id }}" {{ 'selected' if sel_paper == p.id }}>{{ p.name }}</option>{% endfor %}
+      </select>
+    </label>
+    <label class="sf sf-range">{{ t('label.date') }} <input type="date" name="date_from" value="{{ date_from }}"></label>
+    <label class="sf sf-range">&rarr; <input type="date" name="date_to" value="{{ date_to }}"></label>
+    <button class="btn" type="submit">{{ t('stats.run') }}</button>
+  </form>
+</div>
+
+{% if searched and not blocks %}
+<div class="card"><p class="muted">{{ t('stats.empty') }}</p></div>
+{% endif %}
+
+{% for b in blocks %}
+<div class="card">
+  <div class="card-head">
+    <span class="lv-badge lv-{{ b.level }}">{{ b.level }}</span> {{ b.paper }}
+    <span class="muted small">· {{ t('stats.sessions_n') }} {{ b.sessions_n }} · {{ t('stats.participants') }} {{ b.n }} · {{ t('stats.completion') }} {{ b.complete_pct }}%</span>
+  </div>
+
+  <table class="table">
+    <tr>
+      <th></th><th>Mathematics / {{ b.math_max }}</th><th>Expression / {{ b.expr_max }}</th>
+      <th>English / {{ b.eng_max }}</th><th>SEL / 50</th><th>Classroom Skills / 50</th>
+    </tr>
+    <tr>
+      <td><b>{{ t('stats.mean') }}</b></td>
+      <td><b>{{ b.math.mean }}</b></td><td><b>{{ b.expr.mean }}</b></td>
+      <td><b>{{ b.eng.mean }}</b></td><td><b>{{ b.sel.mean }}</b></td><td><b>{{ b.cs.mean }}</b></td>
+    </tr>
+    <tr class="muted">
+      <td>{{ t('stats.min') }} / {{ t('stats.max') }}</td>
+      <td>{{ b.math.min }} / {{ b.math.max }}</td><td>{{ b.expr.min }} / {{ b.expr.max }}</td>
+      <td>{{ b.eng.min }} / {{ b.eng.max }}</td><td>{{ b.sel.min }} / {{ b.sel.max }}</td><td>{{ b.cs.min }} / {{ b.cs.max }}</td>
+    </tr>
+  </table>
+
+  <div class="rp-dim-head" style="margin-top:14px">{{ t('stats.by_question') }}</div>
+  <table class="table">
+    <tr>
+      <th>#</th><th>Task</th><th>{{ t('stats.scored_n') }}</th><th>{{ t('stats.mean') }} / 2</th>
+      <th>{{ t('stats.indep_rate') }}</th><th>{{ t('stats.guided_n') }}</th>
+      <th>{{ t('stats.no_n') }}</th><th>{{ t('stats.blank_n') }}</th>
+    </tr>
+    {% for q in b.q_stats %}
+    <tr>
+      <td><b class="qcode">{{ q.code }}</b></td>
+      <td>{{ q.title }}<div class="muted small">{{ q.ability }}</div></td>
+      <td>{{ q.scored_n }}</td>
+      <td>{% if q.mean is not none %}<b>{{ q.mean }}</b>{% else %}—{% endif %}</td>
+      <td>{% if q.indep_pct is not none %}{{ q.indep_pct }}%{% else %}—{% endif %}</td>
+      <td>{{ q.guided_n or '·' }}</td>
+      <td>{{ q.no_n or '·' }}</td>
+      <td class="{{ 'rp-warn' if q.blank_n }}">{{ q.blank_n or '·' }}</td>
+    </tr>
+    {% endfor %}
+  </table>
+</div>
+{% endfor %}
+
+<script>
+(function () {
+  var scope = document.getElementById("stats-scope");
+  function sync() {
+    document.querySelectorAll(".sf").forEach(function (el) { el.style.display = "none"; });
+    document.querySelectorAll(".sf-" + scope.value).forEach(function (el) { el.style.display = "flex"; });
+  }
+  scope.addEventListener("change", sync);
+  sync();
+})();
+</script>
+{% endblock %}

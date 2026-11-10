@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+{% block title %}{{ t('admin.sessions.title') }}{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <div class="kicker">{{ t('nav.admin') | upper }}</div>
+    <h1>{{ t('admin.sessions.title') }}</h1>
+  </div>
+  <div class="head-actions">
+    <a class="btn btn-ghost" href="/admin/stats">{{ t('stats.title') }}</a>
+    <a class="btn btn-ghost" href="/admin/papers">{{ t('btn.papers') }}</a>
+    <a class="btn btn-ghost" href="/admin/teachers">{{ t('admin.teachers.link') }}</a>
+  </div>
+</div>
+{% if msg %}<div class="flash">{{ msg }}</div>{% endif %}
+
+<div class="card">
+  <div class="card-head"><span class="sec-num">01</span> {{ t('admin.create_session') }}</div>
+  <form class="inline-form" method="post" action="/admin/sessions/create">
+    <label>{{ t('label.date') }} <input type="date" name="date" required></label>
+    <label>{{ t('label.label') }} <input type="text" name="label" placeholder="{{ t('placeholder.session_label') }}" required></label>
+    <label>{{ t('label.paper') }}
+      <select name="paper_id">
+        {% for p in papers %}<option value="{{ p.id }}">{{ p.name }}</option>{% endfor %}
+      </select>
+    </label>
+    <button class="btn" type="submit">{{ t('btn.create') }}</button>
+  </form>
+</div>
+
+<div class="card">
+  <div class="card-head"><span class="sec-num">02</span> {{ t('admin.all_sessions') }}</div>
+  {% if sessions %}
+  <table class="table">
+    <tr><th>{{ t('label.date') }}</th><th>{{ t('label.label') }}</th><th>{{ t('label.paper') }}</th><th>{{ t('th.students') }}</th><th></th></tr>
+    {% for se in sessions %}
+    <tr>
+      <td>{{ se.date }}</td>
+      <td>{{ se.label }}</td>
+      <td class="muted small">{{ paper_names.get(se.paper_id, '') }}</td>
+      <td>{{ counts[se.id] }}</td>
+      <td class="t-actions">
+        <a class="btn" href="/admin/sessions/{{ se.id }}">{{ t('btn.open') }}</a>
+        <form method="post" action="/admin/sessions/{{ se.id }}/delete" class="inline"
+              onsubmit="return confirm('{{ t('confirm.delete_session') }}')">
+          <button class="btn btn-danger" type="submit">{{ t('btn.delete') }}</button>
+        </form>
+      </td>
+    </tr>
+    {% endfor %}
+  </table>
+  {% else %}
+  <p class="muted">{{ t('admin.no_sessions') }}</p>
+  {% endif %}
+</div>
+{% endblock %}

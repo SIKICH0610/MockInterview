@@ -1,0 +1,107 @@
+{% extends "base.html" %}
+{% from "_macros.html" import wbnav %}
+{% block title %}{{ t('review.title') }} · {{ s.label }}{% endblock %}
+{% block bodyattrs %}data-teacher="{{ teacher.id }}" data-page="review"{% endblock %}
+{% block content %}
+<div class="wb-head">
+  <div>
+    <div class="kicker"><a href="/wb">{{ t('wb.kicker') }}</a> · {{ s.date }} · {{ s.label }}</div>
+    <h1 class="h-slim">{{ t('review.title') }} <span class="muted-h">· {{ teacher.name }}</span></h1>
+  </div>
+  {{ wbnav(s, 'review') }}
+</div>
+
+<p class="stage-hint">{{ t('review.hint') }}</p>
+
+{% if teacher.role == 'admin' %}
+<div class="archive-bar">
+  <button type="button" class="btn" id="batch-archive" data-session="{{ s.id }}"
+          data-label="{{ t('review.archive_btn') }}" data-busy="{{ t('review.archiving') }}">{{ t('review.archive_btn') }}</button>
+  {% if archives %}
+  <span class="archive-list">
+    <b>{{ t('review.archives') }}:</b>
+    {% for a in archives %}
+    <a href="/archive/{{ a.id }}">{{ a.filename }}</a><span class="by">({{ a.created_at.strftime('%m-%d %H:%M') }})</span>
+    {% endfor %}
+  </span>
+  {% endif %}
+</div>
+{% endif %}
+
+{% macro sep_cell(st) %}
+  {% set o = sep.get(st.id) %}
+  {% if o and o.response == 'independent' %}<span class="mx-sep sp-ok" title="{{ t('sep.cell.independent') }}">&#10003;</span>
+  {% elif o and o.response == 'brief' %}<span class="mx-sep sp-mid" title="{{ t('sep.cell.brief') }}">&#177;</span>
+  {% elif o and o.response == 'support' %}<span class="mx-sep sp-low" title="{{ t('sep.cell.support') }}">!</span>
+  {% elif o and o.response == 'not_observed' %}<span class="mx-sep" title="{{ t('sep.cell.not_observed') }}">&Oslash;</span>
+  {% else %}<span class="mx-sep sp-miss" title="{{ t('sep.cell.missing') }}">&mdash;</span>{% endif %}
+{% endmacro %}
+
+{% for gname, members in roster %}
+<div class="card mx-card">
+  <div class="card-head"><span class="sec-num">{{ gname if gname else t('roster.ungrouped') }}</span></div>
+  <div class="mx-scroll">
+    <table class="mx-table">
+      <tr>
+        <th class="mx-name">{{ t('label.name') }}</th>
+        {% for code in codes %}<th>{{ code }}</th>{% endfor %}
+        <th>{{ t('review.sep') }}</th>
+        <th>{{ t('review.ct') }}</th>
+        <th>{{ t('review.obs') }}</th>
+        <th>{{ t('review.events') }}</th>
+        <th>{{ t('review.progress') }}</th>
+        <th>{{ t('review.status') }}</th>
+        <th></th>
+      </tr>
+      {% for st in members %}
+      {% set rv = reviews.get(st.id) %}
+      <tr class="mx-row" data-student="{{ st.id }}">
+        <td class="mx-name">
+          <a href="/wb/student/{{ st.id }}">{{ st.name }}</a>
+          <span class="lv-badge lv-{{ st.level }}">{{ st.level }}</span>
+        </td>
+        {% for code in codes %}
+        {% set r = records.get((st.id, code)) %}
+        {% set q = questions[st.level][code] %}
+        <td class="mx-cell {{ 'mx-miss' if not r or not r.status }}">
+          <a href="/wb/student/{{ st.id }}#{{ code }}">
+            {% if r and r.status == 'scored' %}
+              <span class="mx-score ms{{ r.academic if r.academic is not none else 'x' }}">{{ r.academic if r.academic is not none else '·' }}</span>
+              {%- if q.has_expression -%}
+                {%- if r.expression is not none -%}<span class="mx-expr">E{{ r.expression }}</span>
+                {%- else -%}<span class="mx-eflag" title="{{ t('review.eflag') }}">E?</span>{%- endif -%}
+              {%- endif -%}
+            {% elif r and r.status == 'not_observed' %}<span class="mx-no">N/O</span>
+            {% elif r and r.status == 'not_completed' %}<span class="mx-no">N/C</span>
+            {% else %}<span class="mx-blank">&mdash;</span>{% endif %}
+          </a>
+        </td>
+        {% endfor %}
+        <td class="mx-cell">{{ sep_cell(st) }}</td>
+        <td class="mx-cell mx-num">{{ ct_counts.get(st.id, 0) or '·' }}</td>
+        <td class="mx-cell mx-num">{{ obs_counts.get(st.id, 0) or '·' }}</td>
+        <td class="mx-cell mx-num">{{ ev_counts.get(st.id, 0) or '·' }}</td>
+        <td class="mx-cell mx-num"><b>{{ progress[st.id] }}</b>/{{ total }}</td>
+        <td class="mx-cell">
+          <span class="status-chip stc-{{ status[st.id] }}">{{ t('st.' ~ status[st.id]) }}</span>
+        </td>
+        <td class="mx-cell mx-action">
+          <button type="button" class="btn btn-sm review-btn {{ 'btn-ghost' if rv else '' }}">
+            {{ t('btn.unconfirm') if rv else t('btn.confirm_review') }}
+          </button>
+          <a class="btn btn-ghost btn-sm" href="/report/{{ st.id }}">{{ t('btn.report') }}</a>
+          <div class="review-meta by">
+            {% if rv %}{{ teacher_names.get(rv.teacher_id, '') }} · {{ rv.created_at.strftime('%m-%d %H:%M') }}{% endif %}
+          </div>
+        </td>
+      </tr>
+      {% endfor %}
+    </table>
+  </div>
+</div>
+{% endfor %}
+
+{% if not roster %}
+<div class="card"><p class="muted">{{ t('admin.no_students') }}</p></div>
+{% endif %}
+{% endblock %}

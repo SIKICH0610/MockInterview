@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block title %}{{ t('login.title') }}{% endblock %}
+{% block content %}
+<div class="login-wrap">
+  <div class="card login-card">
+    <div class="kicker">{{ t('home.kicker') }}</div>
+    <h1>{{ t('login.title') }}</h1>
+    {% if error %}<div class="flash flash-err">{{ error }}</div>{% endif %}
+    <form method="post" action="/login" class="login-form">
+      <input type="hidden" name="next" value="{{ next }}">
+      <label>{{ t('login.name') }}
+        <input type="text" name="name" autocomplete="username" autofocus required>
+      </label>
+      <label>{{ t('login.password') }}
+        <input type="password" name="password" autocomplete="current-password" required>
+      </label>
+      <button class="btn btn-big" type="submit">{{ t('login.submit') }}</button>
+    </form>
+    <p class="muted small">{{ t('login.hint') }}</p>
+  </div>
+</div>
+{% endblock %}

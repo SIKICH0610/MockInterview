@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% block title %}{{ t('home.title') }}{% endblock %}
+{% block content %}
+<div class="kicker">{{ t('home.kicker') }}</div>
+<h1>{{ t('home.title') }}</h1>
+<p class="sub">{{ t('home.sub') }}</p>
+
+<div class="tile-row">
+  <a class="tile" href="/admin/sessions">
+    <div class="tile-num">01</div>
+    <div class="tile-title">{{ t('home.admin.title') }}</div>
+    <div class="tile-desc">{{ t('home.admin.desc') }}</div>
+  </a>
+  <a class="tile" href="/wb">
+    <div class="tile-num">02</div>
+    <div class="tile-title">{{ t('home.wb.title') }}</div>
+    <div class="tile-desc">{{ t('home.wb.desc') }}</div>
+  </a>
+</div>
+
+{% if sessions %}
+<div class="card">
+  <div class="card-head"><span class="sec-num">{{ t('home.sessions') }}</span></div>
+  <table class="table">
+    <tr><th>{{ t('label.date') }}</th><th>{{ t('label.session') }}</th><th></th></tr>
+    {% for se in sessions %}
+    <tr>
+      <td>{{ se.date }}</td>
+      <td>{{ se.label }}</td>
+      <td class="t-actions">
+        <a class="btn btn-ghost" href="/admin/sessions/{{ se.id }}">{{ t('btn.manage') }}</a>
+        <a class="btn" href="/wb">{{ t('btn.open_wb') }}</a>
+      </td>
+    </tr>
+    {% endfor %}
+  </table>
+</div>
+{% endif %}
+{% endblock %}

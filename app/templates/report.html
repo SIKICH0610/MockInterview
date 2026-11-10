@@ -1,0 +1,329 @@
+{% extends "base.html" %}
+{% block title %}{{ st.name }} · Report{% endblock %}
+{% block bodyattrs %}data-teacher="{{ teacher.id }}" data-student="{{ st.id }}" data-page="report"{% endblock %}
+
+{% macro statbar(d, max_label, avg_cap) %}
+<div class="rp-statbar">
+  <div class="rp-stat"><div class="rp-stat-num">{{ d.mine }}</div><div class="rp-stat-cap">Score · {{ max_label }}</div></div>
+  <div class="rp-stat"><div class="rp-stat-num">{{ d.avg if d.avg is not none else '—' }}</div><div class="rp-stat-cap">{{ avg_cap }}</div></div>
+  <div class="rp-stat"><div class="rp-stat-num">{{ d.rank if d.rank else '—' }}</div><div class="rp-stat-cap">Rank in cohort</div></div>
+  <div class="rp-stat"><div class="rp-stat-num">{{ d.top if d.top else '—' }}</div><div class="rp-stat-cap">Standing</div></div>
+</div>
+{% endmacro %}
+
+{% macro pagehead(title, subtitle) %}
+<div class="rp-pagehead">
+  <div>
+    <div class="rp-pagetitle">{{ title }}</div>
+    <div class="rp-pagesub">{{ subtitle }}</div>
+  </div>
+  <div class="rp-brand-mini"><span class="brand-main">Think Academy</span> <span class="brand-chip">SILICON VALLEY</span></div>
+</div>
+{% endmacro %}
+
+{% block content %}
+<div class="report-toolbar no-print">
+  <a class="btn btn-ghost" href="/wb/review?session_id={{ s.id }}">&larr; {{ t('btn.review') }}</a>
+  <div class="head-actions">
+    {% if review %}<span class="status-chip stc-reviewed">{{ t('st.reviewed') }} · {{ teacher_names.get(review.teacher_id, '') }}</span>
+    {% else %}<span class="status-chip stc-in_progress">{{ t('st.in_progress') }}</span>{% endif %}
+    <select id="cmp-select" title="{{ t('report.cmp.title') }}">
+      <option value="session" {{ 'selected' if cmp_mode == 'session' }}>{{ t('report.cmp.session') }}</option>
+      <option value="paper" {{ 'selected' if cmp_mode == 'paper' }}>{{ t('report.cmp.paper') }}</option>
+      <option value="range" {{ 'selected' if cmp_mode == 'range' }}>{{ t('report.cmp.range') }}</option>
+    </select>
+    <input type="date" id="cmp-from" value="{{ cmp_from }}" style="display:{{ 'inline-block' if cmp_mode == 'range' else 'none' }}">
+    <input type="date" id="cmp-to" value="{{ cmp_to }}" style="display:{{ 'inline-block' if cmp_mode == 'range' else 'none' }}">
+    <button type="button" class="btn btn-ghost" id="print-btn">{{ t('report.print') }}</button>
+    <button type="button" class="btn" id="pdf-btn" data-label="{{ t('report.pdf_save') }}" data-busy="{{ t('report.pdf_saving') }}">{{ t('report.pdf_save') }}</button>
+  </div>
+</div>
+
+<div class="report">
+
+  <!-- ========== COVER ========== -->
+  <section class="rp-page rp-cover">
+    <div class="rp-cover-brand">
+      <span class="brand-main">Think Academy</span>
+      <span class="brand-chip">SILICON VALLEY</span>
+    </div>
+    <h1 class="rp-cover-title">{{ st.level }} Early Childhood Development<br>&amp; School Readiness<br>Assessment Report</h1>
+    <div class="rp-cover-sub">In-Person Mock Interview Assessment</div>
+
+    <div class="rp-cover-student">
+      <div class="rp-cover-label">Student</div>
+      <div class="rp-cover-name">{{ st.name }}</div>
+      <table class="rp-cover-info">
+        <tr><td>Level</td><td><span class="lv-badge lv-{{ st.level }}">{{ st.level }}</span></td></tr>
+        <tr><td>Session</td><td>{{ s.date }} · {{ s.label }}</td></tr>
+        {% if st.external_id %}<tr><td>Student ID</td><td>{{ st.external_id }}</td></tr>{% endif %}
+        {% if st.group %}<tr><td>Group</td><td>{{ st.group.name }}</td></tr>{% endif %}
+        {% if involved %}<tr><td>Assessed by</td><td>{{ involved | join(', ') }}</td></tr>{% endif %}
+        <tr><td>Report date</td><td>{{ today }}</td></tr>
+      </table>
+    </div>
+
+    <div class="rp-bubbles">
+      {% for a in abilities %}
+      <span class="rp-bubble b{{ loop.index }}">{{ a.name }}</span>
+      {% endfor %}
+    </div>
+  </section>
+
+  <!-- ========== 01 OVERVIEW ========== -->
+  <section class="rp-page">
+    {{ pagehead('Performance Overview', 'Four dimensions · raw card scores, no composite weighting') }}
+    <div class="rp-cards">
+      <div class="rp-card">
+        <div class="rp-card-head">Mathematics</div>
+        <div class="rp-score">{{ math_total }}<span class="rp-score-max">/ {{ math_max }}</span></div>
+        <div class="rp-sub">Expression {{ expr_sum }} / {{ expr_max }} <span class="muted small">(kept separate)</span></div>
+        {% if dims.math.avg is not none %}<div class="rp-cohort">{{ cmp_label }} {{ dims.math.avg }} · {{ dims.math.rank }} · {{ dims.math.top }}</div>{% endif %}
+        <ul class="rp-notes">
+          <li>{{ indep }} task{{ 's' if indep != 1 }} completed independently{% if guided %}, {{ guided }} after guidance{% endif %}</li>
+          {% if math_missing %}<li class="rp-warn">Not recorded: {{ math_missing | join(', ') }}</li>{% endif %}
+        </ul>
+      </div>
+      <div class="rp-card">
+        <div class="rp-card-head">English</div>
+        <div class="rp-score">{{ eng_total }}<span class="rp-score-max">/ {{ eng_max }}</span></div>
+        {% if dims.eng.avg is not none %}<div class="rp-cohort">{{ cmp_label }} {{ dims.eng.avg }} · {{ dims.eng.rank }} · {{ dims.eng.top }}</div>{% endif %}
+        {% if eng_counts %}
+        <ul class="rp-notes"><li>Item-level correct counts: {{ eng_counts | join(' · ') }}</li></ul>
+        {% endif %}
+      </div>
+      <div class="rp-card">
+        <div class="rp-card-head">Classroom Skills</div>
+        <div class="rp-score">{{ cs_score }}<span class="rp-score-max">/ 50</span></div>
+        {% if dims.cs.avg is not none %}<div class="rp-cohort">{{ cmp_label }} {{ dims.cs.avg }} · {{ dims.cs.rank }} · {{ dims.cs.top }}</div>{% endif %}
+        <ul class="rp-notes">
+          {% if cs_ded %}<li>{{ cs_ded }} point{{ 's' if cs_ded != 1 }} deducted across classroom events</li>
+          {% else %}<li>No classroom-behavior deductions recorded</li>{% endif %}
+          {% if gen_any %}<li>Hands-on activities: {{ gen_done }} of {{ gen_any }} observed fully independent</li>{% endif %}
+        </ul>
+      </div>
+      <div class="rp-card">
+        <div class="rp-card-head">Social-Emotional (SEL)</div>
+        <div class="rp-score">{{ sel_score }}<span class="rp-score-max">/ 50</span></div>
+        {% if dims.sel.avg is not none %}<div class="rp-cohort">{{ cmp_label }} {{ dims.sel.avg }} · {{ dims.sel.rank }} · {{ dims.sel.top }}</div>{% endif %}
+        <ul class="rp-notes">
+          {% if sep_label %}<li>Separation: {{ sep_label }}</li>{% endif %}
+          {% if sel_ded %}<li>{{ sel_ded }} point{{ 's' if sel_ded != 1 }} deducted across SEL events</li>
+          {% else %}<li>No SEL deductions recorded</li>{% endif %}
+        </ul>
+      </div>
+    </div>
+
+    <div class="rp-feedback">
+      <div class="rp-feedback-head">Teacher's View</div>
+      <div class="no-print">
+        <textarea id="summary-text" class="rp-summary-ta" rows="5"
+          placeholder="{{ t('report.summary_ph') }}">{{ summary.text if summary else '' }}</textarea>
+        <div class="rp-summary-bar">
+          <button type="button" class="btn btn-sm" id="summary-save">{{ t('report.summary_save') }}</button>
+          <button type="button" class="btn btn-ghost btn-sm" id="summary-ai"
+                  data-label="{{ t('report.ai_draft') }}" data-busy="{{ t('report.ai_drafting') }}"
+                  data-done="{{ t('report.ai_done') }}" data-notconf="{{ t('ai.not_configured') }}"
+                  data-billing="{{ t('ai.billing') }}"
+                  data-failed="{{ t('ai.failed') }}">{{ t('report.ai_draft') }}</button>
+          <span class="by" id="summary-meta">
+            {% if summary and summary.teacher_id %}{{ teacher_names.get(summary.teacher_id, '') }} · {{ summary.updated_at.strftime('%m-%d %H:%M') }}{% endif %}
+          </span>
+        </div>
+      </div>
+      <div class="print-only rp-summary-print">{{ summary.text if summary and summary.text else '' }}</div>
+    </div>
+
+    {% if cohort_n > 1 %}
+    <p class="rp-foot">Comparison cohort: the {{ cohort_n }} {{ st.level }} children with recorded scores in {{ cmp_desc }}. Standing uses the percentile convention (children below + half of ties) ÷ cohort; it updates as more records come in.</p>
+    {% endif %}
+  </section>
+
+  <!-- ========== 02 DOMAIN ANALYSIS ========== -->
+  <section class="rp-page">
+    {{ pagehead('Mathematics · 7 Abilities', 'Child vs. ' ~ cmp_label | lower ~ ', each axis scaled to its own maximum') }}
+    <div class="rp-radar-row">
+      <div class="rp-radar">{{ radar | safe }}</div>
+      <table class="rp-table rp-ability-table">
+        <tr><th>Ability</th><th>Evidence</th><th>Score</th><th>Cohort avg</th></tr>
+        {% for a in abilities %}
+        <tr>
+          <td><b>{{ a.name }}</b></td>
+          <td class="muted small">{{ a.evidence }}</td>
+          <td>{% if a.observed %}<b>{{ a.score }}</b> / {{ a.max }}{% else %}<span class="rp-no">Not observed</span>{% endif %}</td>
+          <td class="muted small">{% if a.avg_pct is not none %}{{ (a.avg_pct * a.max) | round(1) }} / {{ a.max }}{% else %}—{% endif %}</td>
+        </tr>
+        {% endfor %}
+      </table>
+    </div>
+    <p class="rp-foot">Radar axes show each ability as a share of its own maximum — evidence counts differ (five single tasks /2, the Creativity ticket /2, Expression pooled across {{ expr_qn }} oral responses /{{ expr_max }}). Expression is one of the seven mathematics abilities and does not add to the academic total.</p>
+  </section>
+
+  <!-- ========== 03 TASK-BY-TASK ========== -->
+  <section class="rp-page">
+    {{ pagehead('Task-by-task Results', 'Every task scored 0–2 · Independent vs. after guidance') }}
+
+    <div class="rp-keep">
+    <div class="rp-dim-head">Mathematics &amp; Creativity</div>
+    {{ statbar(dims.math, math_max ~ ' max', cmp_label) }}
+    <table class="rp-table">
+      <tr><th>#</th><th>Task</th><th>Result</th><th>Expression</th><th>Teacher notes</th></tr>
+      {% for q, r in math_rows %}
+      <tr>
+        <td><b class="qcode">{{ q.code }}</b></td>
+        <td>{{ q.title }}<div class="muted small">{{ q.ability }}</div></td>
+        <td>
+          {% if r and r.status == 'scored' and r.academic is not none %}
+            <b>{{ r.academic }}</b> / 2
+            {% if r.academic == 2 %}<span class="rp-tag rp-tag-good">Independent</span>
+            {% elif r.academic == 1 %}<span class="rp-tag rp-tag-mid">After guidance</span>{% endif %}
+          {% elif r and r.status == 'not_observed' %}<span class="rp-no">Not observed</span>
+          {% elif r and r.status == 'not_completed' %}<span class="rp-no">Not completed</span>
+          {% else %}<span class="rp-no">—</span>{% endif %}
+        </td>
+        <td>
+          {% if q.has_expression %}
+            {% if r and r.expression is not none %}<b>{{ r.expression }}</b> / 2{% else %}<span class="rp-no">—</span>{% endif %}
+          {% else %}<span class="muted small">n/a</span>{% endif %}
+        </td>
+        <td class="muted small">{{ r.note if r and r.note }}</td>
+      </tr>
+      {% endfor %}
+    </table>
+
+    </div>
+    <div class="rp-keep">
+    <div class="rp-dim-head" style="margin-top:18px">English</div>
+    {{ statbar(dims.eng, eng_max ~ ' max', cmp_label) }}
+    <table class="rp-table">
+      <tr><th>#</th><th>Task</th><th>Result</th><th>Teacher notes</th></tr>
+      {% for q, r in eng_rows %}
+      <tr>
+        <td><b class="qcode">{{ q.code }}</b></td>
+        <td>{{ q.title }}<div class="muted small">{{ q.ability }}</div></td>
+        <td>
+          {% if r and r.status == 'scored' and r.academic is not none %}
+            <b>{{ r.academic }}</b> / 2
+            {% if r.academic == 2 %}<span class="rp-tag rp-tag-good">Independent</span>
+            {% elif r.academic == 1 %}<span class="rp-tag rp-tag-mid">After guidance</span>{% endif %}
+          {% elif r and r.status == 'not_observed' %}<span class="rp-no">Not observed</span>
+          {% elif r and r.status == 'not_completed' %}<span class="rp-no">Not completed</span>
+          {% else %}<span class="rp-no">—</span>{% endif %}
+          {% if q.trial_max and r and r.trial is not none %}<div class="muted small">{{ r.trial }} / {{ q.trial_max }} correct</div>{% endif %}
+        </td>
+        <td class="muted small">{{ r.note if r and r.note }}</td>
+      </tr>
+      {% endfor %}
+    </table>
+    </div>
+  </section>
+
+  <!-- ========== 04 GROUP ACTIVITIES + SEL ========== -->
+  <section class="rp-page">
+    {{ pagehead('Group Activities · SEL & Classroom Skills', 'Observed from Separation onward') }}
+
+    <div class="rp-stage-grid">
+      <div class="rp-stage">
+        <div class="rp-stage-head">Separation</div>
+        {% if sep_label %}
+        <div class="rp-stage-val">{{ sep_label }}</div>
+        {% if sep and sep.note %}<div class="muted small">{{ sep.note }}</div>{% endif %}
+        {% else %}<div class="rp-no">Not recorded</div>{% endif %}
+      </div>
+      {% for stage, o in gen.items() %}
+      <div class="rp-stage">
+        <div class="rp-stage-head">{{ stage }}</div>
+        {% if stage_dim_values.get(stage) %}
+        <div class="rp-dims">
+          {% for label, value in stage_dim_values[stage] %}
+          <div class="rp-dim-line"><span>{{ label }}</span><b>{{ value }}</b></div>
+          {% endfor %}
+        </div>
+        {% if o and o.note %}<div class="muted small">{{ o.note }}</div>{% endif %}
+        {% elif o and (o.response or o.note) %}
+        {% if o.response %}<div class="rp-stage-val">{{ resp_label.get(o.response, o.response) }}</div>{% endif %}
+        {% if o.note %}<div class="muted small">{{ o.note }}</div>{% endif %}
+        {% else %}<div class="rp-no">Not recorded</div>{% endif %}
+      </div>
+      {% endfor %}
+    </div>
+
+    {% if stage_dim_values.get('Circle Time') %}
+    <div class="rp-dim-head" style="margin-top:14px">Circle Time · overall ratings</div>
+    <div class="rp-dims rp-dims-row">
+      {% for label, value in stage_dim_values['Circle Time'] %}
+      <div class="rp-dim-line"><span>{{ label }}</span><b>{{ value }}</b></div>
+      {% endfor %}
+    </div>
+    {% endif %}
+
+    {% if circle %}
+    <div class="rp-dim-head" style="margin-top:16px">Circle Time · story responses</div>
+    <table class="rp-table">
+      <tr><th>Prompt</th><th>Response</th><th>What the child said / did</th></tr>
+      {% for o in circle %}
+      <tr>
+        <td class="muted small">{% if o.prompt_index %}P{{ o.prompt_index }} · {{ prompts[o.prompt_index - 1] }}{% endif %}</td>
+        <td><span class="rp-tag {{ 'rp-tag-good' if o.response == 'independent' else ('rp-tag-mid' if o.response == 'prompted') }}">
+          {% if o.response == 'independent' %}Independent{% elif o.response == 'prompted' %}After prompt{% else %}No response{% endif %}</span></td>
+        <td class="muted small">{{ o.note }}</td>
+      </tr>
+      {% endfor %}
+    </table>
+    <p class="rp-foot">Not every child is called on for every prompt; prompts without a record were simply not this child's turn.</p>
+    {% endif %}
+
+    <div class="rp-dim-head" style="margin-top:16px">SEL</div>
+    {{ statbar(dims.sel, '50 max', cmp_label) }}
+    <div class="rp-dim-head" style="margin-top:10px">Classroom Skills</div>
+    {{ statbar(dims.cs, '50 max', cmp_label) }}
+
+    {% if events %}
+    <table class="rp-table" style="margin-top:12px">
+      <tr><th>Time</th><th>Stage</th><th>Area</th><th>Points</th><th>What happened</th><th>Support given</th></tr>
+      {% for ev in events %}
+      <tr>
+        <td class="muted small">{{ ev.created_at.strftime('%H:%M') }}</td>
+        <td class="muted small">{{ ev.stage }}</td>
+        <td>{{ 'SEL' if ev.category == 'SEL' else 'Classroom' }}</td>
+        <td class="rp-ded">&minus;{{ ev.points }}</td>
+        <td>{{ ev.reason }}</td>
+        <td class="muted small">{{ ev.support }}</td>
+      </tr>
+      {% endfor %}
+    </table>
+    {% else %}
+    <p class="muted" style="margin-top:12px">No support or deduction events were recorded during this session.</p>
+    {% endif %}
+    <p class="rp-foot">Each area starts at 50; recorded events deduct points. An incorrect academic answer never deducts behavior points. Items marked “Not observed” had no valid opportunity and are not counted as 0.</p>
+  </section>
+
+  <!-- ========== BACK PAGE ========== -->
+  <section class="rp-page rp-back">
+    <div class="rp-back-brand">
+      <span class="brand-main" style="font-size:26px">Think Academy</span>
+      <span class="brand-chip">SILICON VALLEY</span>
+    </div>
+    <div class="rp-back-line">Inspiring a lifelong love of learning</div>
+    <div class="rp-back-contact">
+      <div><b>Think Academy Silicon Valley</b></div>
+      <div>www.thethinkacademy.com</div>
+    </div>
+    <div class="rp-footer" style="border:none; text-align:center">
+      Scores reflect on-site observation during one session · Generated {{ today }}
+    </div>
+  </section>
+
+  <div class="rp-sec no-print">
+    <div class="rp-sec-head"><span class="sec-num">PDF</span> {{ t('report.pdf_list') }}</div>
+    <ul class="pdf-list" id="pdf-list" data-failed="{{ t('report.pdf_failed') }}">
+      {% for p in pdfs %}
+      <li><a href="/report/pdf/{{ p.id }}" target="_blank">{{ p.filename }}</a>
+        <span class="by">{{ (p.size // 1024) if p.size }} KB · {{ teacher_names.get(p.teacher_id, '') }} · {{ p.created_at.strftime('%m-%d %H:%M') }}</span></li>
+      {% else %}
+      <li class="muted small" id="pdf-none">{{ t('report.pdf_none') }}</li>
+      {% endfor %}
+    </ul>
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% block title %}{{ t('papers.title') }}{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <div class="kicker"><a href="/admin/sessions">{{ t('nav.admin') | upper }}</a></div>
+    <h1>{{ t('papers.title') }}</h1>
+  </div>
+</div>
+{% if msg %}<div class="flash">{{ msg }}</div>{% endif %}
+<p class="stage-hint">{{ t('papers.hint') }}</p>
+
+<div class="card">
+  <div class="card-head"><span class="sec-num">01</span> {{ t('papers.create') }}</div>
+  <form class="inline-form" method="post" action="/admin/papers/create">
+    <label>{{ t('papers.name') }} <input type="text" name="name" placeholder="e.g. TK/K Ticket Edition v2" required></label>
+    <label>{{ t('papers.clone_from') }}
+      <select name="clone_from">
+        {% for p in papers %}<option value="{{ p.id }}">{{ p.name }}</option>{% endfor %}
+        <option value="">{{ t('papers.no_clone') }}</option>
+      </select>
+    </label>
+    <button class="btn" type="submit">{{ t('btn.create') }}</button>
+  </form>
+</div>
+
+<div class="card">
+  <div class="card-head"><span class="sec-num">02</span> {{ t('papers.title') }}</div>
+  <table class="table">
+    <tr><th>{{ t('papers.name') }}</th><th>{{ t('papers.versions') }}</th><th>{{ t('papers.count') }}</th><th>{{ t('papers.sessions') }}</th><th></th></tr>
+    {% for p in papers %}
+    <tr>
+      <td><b>{{ p.name }}</b></td>
+      <td>{% for v in stats[p.id].versions %}<span class="lv-badge lv-{{ v }}">{{ v }}</span> {% endfor %}</td>
+      <td>{{ stats[p.id].count }}</td>
+      <td>{{ stats[p.id].sessions }}</td>
+      <td class="t-actions">
+        <a class="btn btn-sm" href="/admin/papers/{{ p.id }}">{{ t('papers.view') }}</a>
+        {% if stats[p.id].sessions == 0 %}
+        <form method="post" action="/admin/papers/{{ p.id }}/delete" class="inline"
+              onsubmit="return confirm('{{ t('confirm.delete_session') }}')">
+          <button class="btn btn-danger btn-sm" type="submit">{{ t('btn.delete') }}</button>
+        </form>
+        {% endif %}
+      </td>
+    </tr>
+    {% endfor %}
+  </table>
+</div>
+{% endblock %}

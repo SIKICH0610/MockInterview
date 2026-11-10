@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>{% block title %}Assessment Workbench{% endblock %}</title>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body {% block bodyattrs %}{% endblock %}>
+<header class="topbar">
+  <a class="brand" href="/">
+    <span class="brand-main">Think Academy</span>
+    <span class="brand-chip">SILICON VALLEY</span>
+  </a>
+  {% set u = request.state.teacher %}
+  <nav class="nav">
+    {% if u %}
+    <a href="/" class="{{ 'on' if active == 'home' }}">{{ t('nav.home') }}</a>
+    {% if u.role == 'admin' %}
+    <a href="/admin/sessions" class="{{ 'on' if active == 'admin' }}">{{ t('nav.admin') }}</a>
+    {% endif %}
+    <a href="/wb" class="{{ 'on' if active == 'wb' }}">{{ t('nav.wb') }}</a>
+    {% endif %}
+    <a class="lang-toggle"
+       href="/lang/{{ 'zh' if cur_lang() == 'en' else 'en' }}?next={{ (request.url.path ~ ('?' ~ request.url.query if request.url.query else '')) | urlencode }}">
+      {{ '中文' if cur_lang() == 'en' else 'EN' }}
+    </a>
+    {% if u %}
+    {% if u.role == 'admin' or request.state.admin_return %}
+    <div class="user-menu">
+      <button type="button" class="user-chip user-chip-btn" id="user-chip">{{ u.name }} &#9662;</button>
+      <div class="user-menu-panel" id="user-menu-panel" data-head="{{ t('switch.header') }}"></div>
+    </div>
+    {% else %}
+    <span class="user-chip">{{ u.name }}</span>
+    {% endif %}
+    <a class="logout-link" href="/logout" title="{{ t('logout') }}">&#x23FB;</a>
+    {% endif %}
+  </nav>
+</header>
+{% if request.state.admin_return %}
+<div class="impersonate-bar">
+  <span>{{ t('impersonate.bar') }} <b>{{ request.state.teacher.name }}</b></span>
+  <a class="btn btn-sm" href="/impersonate/stop">{{ t('impersonate.back') }}</a>
+</div>
+{% endif %}
+<script>
+window.I18N = {
+  saved: {{ t('js.saved') | tojson }},
+  saveFailed: {{ t('js.save_failed') | tojson }},
+  updatedBy: {{ t('js.updated_by') | tojson }},
+  loadLatest: {{ t('js.load_latest') | tojson }},
+  another: {{ t('js.another') | tojson }},
+  confirmDeleteEvent: {{ t('js.confirm_delete_event') | tojson }},
+  confirmUnreview: {{ t('confirm.unreview') | tojson }},
+  unconfirm: {{ t('btn.unconfirm') | tojson }},
+  confirmReview: {{ t('btn.confirm_review') | tojson }},
+  stReviewed: {{ t('st.reviewed') | tojson }},
+  stInProgress: {{ t('st.in_progress') | tojson }},
+  gbDone: {{ t('gb.done') | tojson }},
+  gbNotDone: {{ t('gb.not_done') | tojson }},
+  gbNeedGroup: {{ t('gb.need_group') | tojson }},
+  gbConfirmRandom: {{ t('gb.confirm.randomize') | tojson }},
+  tapAgain: {{ t('js.tap_again') | tojson }},
+  tapAgainDel: {{ t('js.tap_again_del') | tojson }}
+};
+</script>
+<main class="container">
+{% block content %}{% endblock %}
+</main>
+<script src="/static/app.js"></script>
+{% block scripts %}{% endblock %}
+</body>
+</html>

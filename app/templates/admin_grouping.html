@@ -1,0 +1,87 @@
+{% extends "base.html" %}
+{% block title %}{{ t('gb.title') }} · {{ s.label }}{% endblock %}
+{% block bodyattrs %}data-page="grouping" data-session="{{ s.id }}"{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <div class="kicker"><a href="/admin/sessions">{{ t('nav.admin') | upper }}</a> · {{ s.date }} · {{ s.label }}</div>
+    <h1>{{ t('gb.title') }}</h1>
+    <div class="muted small">{{ t('gb.steps') }}</div>
+  </div>
+  <div class="head-actions">
+    <a class="btn btn-ghost" href="/admin/sessions/{{ s.id }}">{{ t('gb.back_detail') }}</a>
+    <button type="button" class="btn" id="gb-random">{{ t('gb.randomize') }}</button>
+  </div>
+</div>
+
+{% if msg == 'gate' %}<div class="flash">{{ t('wb.gate') }}</div>
+{% elif msg %}<div class="flash">{{ msg }}</div>{% endif %}
+
+<div id="gb-banner" class="gb-banner {{ 'ok' if students and groups and pool | length == 0 }}">
+  <span class="gb-banner-text">
+    {% if students and groups and pool | length == 0 %}{{ t('gb.done') }}
+    {% elif not groups %}{{ t('gb.need_group') }}
+    {% else %}{{ pool | length }} {{ t('gb.not_done') }}{% endif %}
+  </span>
+  <a class="btn gb-start {{ 'disabled' if not (students and groups and pool | length == 0) }}" href="/wb">{{ t('gb.start_scoring') }}</a>
+</div>
+
+<p class="stage-hint">{{ t('gb.tap_hint') }}</p>
+
+<div class="gb-board">
+  <div class="gb-col gb-pool" data-group="">
+    <div class="gb-col-head">
+      <span class="gb-col-name">{{ t('gb.pool') }}</span>
+      <span class="gb-count">{{ pool | length }}</span>
+    </div>
+    <div class="gb-list">
+      {% for st in pool %}
+      <div class="gb-chip" data-student="{{ st.id }}">
+        <span class="gb-handle">&#10303;</span>
+        <span class="gb-chip-name">{{ st.name }}</span>
+        <span class="lv-badge {{ 'lv-' + st.level if st.level in ('TK', 'K') else 'lv-unknown' }}">{{ st.level }}</span>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+
+  {% for g in groups %}
+  <div class="gb-col" data-group="{{ g.id }}">
+    <div class="gb-col-head">
+      <span class="gb-col-name">{{ g.name }}</span>
+      <span class="gb-count">{{ g.students | length }}</span>
+    </div>
+    <select class="group-teacher gb-teacher" data-group="{{ g.id }}">
+      <option value="">{{ t('opt.no_teacher') }}</option>
+      {% for te in teachers %}
+      <option value="{{ te.id }}" {{ 'selected' if g.teacher_id == te.id }}>{{ te.name }}</option>
+      {% endfor %}
+    </select>
+    <div class="gb-list">
+      {% for st in g.students | sort(attribute='name') %}
+      <div class="gb-chip" data-student="{{ st.id }}">
+        <span class="gb-handle">&#10303;</span>
+        <span class="gb-chip-name">{{ st.name }}</span>
+        <span class="lv-badge {{ 'lv-' + st.level if st.level in ('TK', 'K') else 'lv-unknown' }}">{{ st.level }}</span>
+      </div>
+      {% endfor %}
+    </div>
+    <form method="post" action="/admin/groups/{{ g.id }}/delete" class="gb-del"
+          onsubmit="return confirm('{{ t('confirm.delete_group') }}')">
+      <input type="hidden" name="back" value="grouping">
+      <button class="btn btn-danger btn-sm" type="submit">{{ t('btn.delete') }}</button>
+    </form>
+  </div>
+  {% endfor %}
+
+  <form method="post" action="/admin/sessions/{{ s.id }}/groups/add" class="gb-col gb-add">
+    <input type="hidden" name="back" value="grouping">
+    <input type="text" name="name" placeholder="{{ t('placeholder.group_name') }}" required>
+    <select name="teacher_id">
+      <option value="">{{ t('opt.teacher') }}</option>
+      {% for te in teachers %}<option value="{{ te.id }}">{{ te.name }}</option>{% endfor %}
+    </select>
+    <button class="btn btn-sm" type="submit">{{ t('btn.add_group') }}</button>
+  </form>
+</div>
+{% endblock %}

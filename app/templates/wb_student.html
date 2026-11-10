@@ -1,0 +1,97 @@
+{% extends "base.html" %}
+{% from "_macros.html" import qpanel, qcard, wbnav %}
+{% block title %}{{ st.name }} · {{ s.label }}{% endblock %}
+{% block bodyattrs %}data-teacher="{{ teacher.id }}" data-student="{{ st.id }}" data-page="student"{% endblock %}
+{% block content %}
+<div class="split">
+  <div class="roster-backdrop"></div>
+  <aside class="roster">
+    {% for gname, members in roster %}
+    <div class="roster-group">{{ gname if gname else t('roster.ungrouped') }}</div>
+    {% for m in members %}
+    <a class="roster-row {{ 'on' if m.id == st.id }}" href="/wb/student/{{ m.id }}">
+      <div class="roster-name"><span>{{ m.name }}</span><span class="lv-badge lv-{{ m.level }}">{{ m.level }}</span></div>
+      <div class="roster-prog">
+        <div class="roster-bar"><div class="roster-fill" style="width: {{ (progress[m.id] / total * 100) | round }}%"></div></div>
+        <span class="roster-count">{{ progress[m.id] }}/{{ total }}</span>
+      </div>
+    </a>
+    {% endfor %}
+    {% endfor %}
+  </aside>
+
+  <div class="record-pane">
+    <div class="student-sticky">
+      <div class="wb-head">
+        <div>
+          <div class="kicker">
+            <a href="/wb">{{ t('wb.kicker') }}</a> ·
+            <a href="/wb/list?session_id={{ s.id }}">{{ s.date }} · {{ s.label }}</a>
+          </div>
+          <h1 class="h-slim">{{ st.name }}
+            <span class="lv-badge lv-{{ st.level }}">{{ st.level }}</span>
+            <span class="muted-h">· {{ t('wb.recorded_by') }} {{ teacher.name }}</span>
+          </h1>
+        </div>
+        <div class="head-actions">
+          <button type="button" class="roster-toggle btn btn-ghost">{{ t('roster.title') }}</button>
+          <a class="btn btn-ghost" href="/report/{{ st.id }}">{{ t('btn.report') }}</a>
+          {{ wbnav(s, 'individual') }}
+        </div>
+      </div>
+      <div class="qchip-row">
+        {% for code in codes %}
+        {% set r = records.get((st.id, code)) %}
+        <button type="button" class="qchip {{ 'done' if r and r.status }}" data-code="{{ code }}">
+          <span class="qchip-code">{{ code }}</span>
+          <span class="qchip-prog">{{ '✓' if r and r.status else '' }}</span>
+        </button>
+        {% endfor %}
+      </div>
+    </div>
+
+    {% for code in codes %}
+      {% set q = qs.get(code) %}
+      {% if q %}
+      <section class="student-q code-section" data-code="{{ code }}">
+        {{ qpanel(q) }}
+        <div class="card-grid one">
+          {{ qcard(st, q, records.get((st.id, code)), teacher_names, False, teacher.id) }}
+        </div>
+      </section>
+      {% endif %}
+    {% endfor %}
+
+    <div class="card" id="events-card">
+      <div class="card-head"><span class="sec-num">SEL / CLASSROOM SKILLS</span> {{ t('events.head') }}</div>
+      <p class="muted small">{{ t('events.hint') }}</p>
+      <form id="event-form" class="event-form">
+        <select name="category">
+          <option value="SEL">SEL</option>
+          <option value="CS">{{ t('events.cat.cs') }}</option>
+        </select>
+        <select name="stage">
+          {% for stage in stages %}<option value="{{ stage }}">{{ t('stage.' ~ stage) }}</option>{% endfor %}
+        </select>
+        <input type="number" name="points" min="1" max="10" value="1" title="Points to deduct">
+        <input type="text" name="reason" placeholder="{{ t('placeholder.what') }}" required>
+        <input type="text" name="support" placeholder="{{ t('placeholder.support') }}">
+        <button class="btn" type="submit">{{ t('btn.add_event') }}</button>
+      </form>
+      <ul class="event-list" id="event-list" data-support-prefix="{{ t('events.support_prefix') }}">
+        {% for ev in events %}
+        <li data-id="{{ ev.id }}">
+          <span class="ev-cat ev-{{ ev.category }}">{{ ev.category }}</span>
+          <span class="ev-stage">{{ ev.stage }}</span>
+          <span class="ev-points">&minus;{{ ev.points }}</span>
+          <span class="ev-reason">{{ ev.reason }}</span>
+          {% if ev.support %}<span class="ev-support">{{ t('events.support_prefix') }} {{ ev.support }}</span>{% endif %}
+          <span class="by">{{ teacher_names.get(ev.teacher_id, '') }} · {{ ev.created_at.strftime('%H:%M') }}</span>
+          <button type="button" class="ev-del" title="Delete">&times;</button>
+        </li>
+        {% endfor %}
+      </ul>
+    </div>
+  </div>
+</div>
+{% endblock %}

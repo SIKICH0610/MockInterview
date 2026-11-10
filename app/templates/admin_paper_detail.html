@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block title %}{{ p.name }} · {{ t('papers.title') }}{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <div class="kicker"><a href="/admin/sessions">{{ t('nav.admin') | upper }}</a> · <a href="/admin/papers">{{ t('papers.title') | upper }}</a></div>
+    <h1>{{ p.name }}</h1>
+  </div>
+</div>
+{% if msg %}<div class="flash">{{ msg }}</div>{% endif %}
+
+{% for version, qs in by_version.items() %}
+<div class="card">
+  <div class="card-head"><span class="lv-badge lv-{{ version }}">{{ version }}</span> {{ qs | length }} {{ t('papers.count') | lower }}</div>
+  <table class="table">
+    <tr><th>#</th><th>{{ t('q.title') }}</th><th>{{ t('q.ability') }}</th><th>{{ t('macro.expression') }}</th><th></th></tr>
+    {% for q in qs %}
+    <tr>
+      <td><b class="qcode">{{ q.code }}</b></td>
+      <td>{{ q.title }}<div class="muted small">{{ q.prompt | truncate(80) }}</div></td>
+      <td class="muted small">{{ q.domain }} · {{ q.ability }}</td>
+      <td class="muted small">{{ '✓' if q.has_expression }}{{ (' /' ~ q.trial_max) if q.trial_max }}</td>
+      <td class="t-actions"><a class="btn btn-ghost btn-sm" href="/admin/questions/{{ q.id }}/edit">{{ t('q.edit') }}</a></td>
+    </tr>
+    {% endfor %}
+  </table>
+</div>
+{% endfor %}
+{% endblock %}

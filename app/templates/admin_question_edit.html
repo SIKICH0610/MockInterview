@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% block title %}{{ q.code }} · {{ t('q.edit') }}{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <div class="kicker">
+      <a href="/admin/papers">{{ t('papers.title') | upper }}</a> ·
+      <a href="/admin/papers/{{ q.paper_id }}">{{ q.paper.name if q.paper }}</a>
+    </div>
+    <h1><span class="lv-badge lv-{{ q.version }}">{{ q.version }}</span> {{ q.code }} · {{ t('q.edit') }}</h1>
+  </div>
+</div>
+
+<form method="post" action="/admin/questions/{{ q.id }}/edit" class="card q-form">
+  <div class="q-grid">
+    <label>{{ t('q.title') }} <input type="text" name="title" value="{{ q.title }}" required></label>
+    <label>{{ t('q.domain') }} <input type="text" name="domain" value="{{ q.domain }}"></label>
+    <label>{{ t('q.ability') }} <input type="text" name="ability" value="{{ q.ability }}"></label>
+    <label>{{ t('q.trial_max') }} <input type="number" name="trial_max" value="{{ q.trial_max if q.trial_max is not none }}" min="1" max="20"></label>
+  </div>
+  <label class="q-full">{{ t('q.prompt') }} <textarea name="prompt" rows="2">{{ q.prompt }}</textarea></label>
+  <label class="q-full">{{ t('macro.target') }} <textarea name="target" rows="2">{{ q.target }}</textarea></label>
+  <label class="q-full">{{ t('macro.setup') }} <textarea name="setup" rows="2">{{ q.setup }}</textarea></label>
+
+  <div class="rubric-head" style="margin-top:10px">{{ t('q.r') }}</div>
+  <div class="q-grid">
+    <label>2 <input type="text" name="r2" value="{{ q.r2 }}"></label>
+    <label>1 <input type="text" name="r1" value="{{ q.r1 }}"></label>
+    <label>0 <input type="text" name="r0" value="{{ q.r0 }}"></label>
+  </div>
+
+  <div class="rubric-head" style="margin-top:10px">{{ t('q.e') }}</div>
+  <label class="inline-check"><input type="checkbox" name="has_expression" value="1" {{ 'checked' if q.has_expression }}> {{ t('macro.expression') }}</label>
+  <div class="q-grid">
+    <label>2 <input type="text" name="e2" value="{{ q.e2 or '' }}"></label>
+    <label>1 <input type="text" name="e1" value="{{ q.e1 or '' }}"></label>
+    <label>0 <input type="text" name="e0" value="{{ q.e0 or '' }}"></label>
+  </div>
+
+  <div style="margin-top:16px; display:flex; gap:10px;">
+    <button class="btn" type="submit">{{ t('q.saved') if False }}{{ 'Save' if cur_lang() == 'en' else '保存' }}</button>
+    <a class="btn btn-ghost" href="/admin/papers/{{ q.paper_id }}">{{ 'Cancel' if cur_lang() == 'en' else '取消' }}</a>
+  </div>
+</form>
+{% endblock %}

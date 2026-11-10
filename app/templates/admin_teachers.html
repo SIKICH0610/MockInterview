@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+{% block title %}{{ t('admin.teachers.link') }}{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <div class="kicker"><a href="/admin/sessions">{{ t('nav.admin') | upper }}</a></div>
+    <h1>{{ t('admin.teachers.link') }}</h1>
+  </div>
+</div>
+{% if msg %}<div class="flash">{{ msg }}</div>{% endif %}
+
+<div class="card">
+  <div class="card-head"><span class="sec-num">01</span> {{ t('admin.add_teacher') }}</div>
+  <form class="inline-form" method="post" action="/admin/teachers/add">
+    <label>{{ t('label.name') }} <input type="text" name="name" required></label>
+    <label>{{ t('label.role') }}
+      <select name="role"><option value="teacher">{{ t('role.teacher') }}</option><option value="admin">{{ t('role.admin') }}</option></select>
+    </label>
+    <button class="btn" type="submit">{{ t('btn.add') }}</button>
+  </form>
+</div>
+
+<div class="card">
+  <div class="card-head"><span class="sec-num">02</span> {{ t('admin.all_teachers') }}</div>
+  {% if teachers %}
+  <table class="table">
+    <tr><th>{{ t('label.name') }}</th><th>{{ t('label.role') }}</th><th>{{ t('th.status') }}</th><th>{{ t('login.password') }}</th><th></th></tr>
+    {% for te in teachers %}
+    <tr>
+      <td>{{ te.name }}</td>
+      <td>{{ t('role.admin') if te.role == 'admin' else t('role.teacher') }}</td>
+      <td>{{ t('status.active') if te.active else t('status.inactive') }}</td>
+      <td>
+        <form method="post" action="/admin/teachers/{{ te.id }}/password" class="pw-form">
+          <span class="pw-state {{ 'ok' if te.password_hash }}">{{ t('teachers.has_pw') if te.password_hash else t('teachers.no_pw') }}</span>
+          <input type="password" name="password" placeholder="{{ t('placeholder.new_pw') }}" autocomplete="new-password" required>
+          <button class="btn btn-ghost btn-sm" type="submit">{{ t('teachers.set_pw') }}</button>
+        </form>
+      </td>
+      <td class="t-actions">
+        {% if te.active and te.id != request.state.teacher.id %}
+        <form method="post" action="/switch/{{ te.id }}" class="inline">
+          <button class="btn btn-sm" type="submit">{{ t('teachers.impersonate') }}</button>
+        </form>
+        {% endif %}
+        {% if te.id != request.state.teacher.id %}
+        <form method="post" action="/admin/teachers/{{ te.id }}/role" class="inline">
+          <button class="btn btn-ghost btn-sm" type="submit">{{ t('teachers.make_teacher') if te.role == 'admin' else t('teachers.make_admin') }}</button>
+        </form>
+        {% endif %}
+        <form method="post" action="/admin/teachers/{{ te.id }}/toggle" class="inline">
+          <button class="btn btn-ghost btn-sm" type="submit">{{ t('btn.deactivate') if te.active else t('btn.activate') }}</button>
+        </form>
+      </td>
+    </tr>
+    {% endfor %}
+  </table>
+  {% else %}
+  <p class="muted">{{ t('admin.no_teachers') }}</p>
+  {% endif %}
+</div>
+{% endblock %}

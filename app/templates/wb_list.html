@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% from "_macros.html" import wbnav %}
+{% block title %}{{ t('wb.individual.title') }} · {{ s.label }}{% endblock %}
+{% block content %}
+<div class="wb-head">
+  <div>
+    <div class="kicker"><a href="/wb">{{ t('wb.kicker') }}</a> · {{ s.date }} · {{ s.label }}</div>
+    <h1 class="h-slim">{{ t('wb.individual.title') }} <span class="muted-h">· {{ teacher.name }}</span></h1>
+  </div>
+  {{ wbnav(s, 'individual') }}
+</div>
+
+{% if students %}
+<div class="student-grid">
+  {% for st in students %}
+  <a class="student-tile" href="/wb/student/{{ st.id }}">
+    <div class="student-tile-name">{{ st.name }}</div>
+    <div class="student-tile-meta">
+      <span class="lv-badge lv-{{ st.level }}">{{ st.level }}</span>
+      {% if st.group %}<span class="muted small">{{ st.group.name }}</span>{% endif %}
+    </div>
+    <div class="progress-bar"><div class="progress-fill" style="width: {{ (progress[st.id] / total * 100) | round }}%"></div></div>
+    <div class="muted small">{{ progress[st.id] }} / {{ total }} {{ t('wb.recorded') }}</div>
+  </a>
+  {% endfor %}
+</div>
+{% else %}
+<div class="card"><p class="muted">{{ t('admin.no_students') }}</p></div>
+{% endif %}
+{% endblock %}

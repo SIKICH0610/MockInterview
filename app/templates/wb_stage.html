@@ -1,0 +1,156 @@
+{% extends "base.html" %}
+{% from "_macros.html" import wbnav %}
+
+{% macro dimblock(st, dims, vals) %}
+<div class="dim-rows">
+  {% for key, label, options in dims %}
+  <div class="dim-row">
+    <div class="dim-label">{{ label }}</div>
+    <div class="dim-opts">
+      {% for opt in options %}
+      <button type="button" class="dim-opt {{ 'on' if vals.get((st.id, key)) == opt }}"
+              data-dim="{{ key }}" data-val="{{ opt }}">{{ opt }}</button>
+      {% endfor %}
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% endmacro %}
+{% block title %}{{ t('stage.obs.title') }} · {{ s.label }}{% endblock %}
+{% block bodyattrs %}data-teacher="{{ teacher.id }}" data-page="stage" data-stage="{{ stage }}"{% endblock %}
+{% block content %}
+<div class="wb-head">
+  <div>
+    <div class="kicker"><a href="/wb">{{ t('wb.kicker') }}</a> · {{ s.date }} · {{ s.label }}</div>
+    <h1 class="h-slim">{{ t('stage.obs.title') }} <span class="muted-h">· {{ teacher.name }}</span></h1>
+  </div>
+  {{ wbnav(s, 'stages') }}
+</div>
+
+{% if groups %}
+<div class="chip-row">
+  {% for g in groups %}
+  <a class="chip {{ 'on' if group and group.id == g.id }}"
+     href="/wb/stage?session_id={{ s.id }}&group_id={{ g.id }}&stage={{ stage | urlencode }}">
+    {{ g.name }}{% if g.teacher_id %} · {{ teacher_names.get(g.teacher_id, '') }}{% endif %}
+    <span class="chip-count">{{ g.students | length }}</span>
+  </a>
+  {% endfor %}
+</div>
+{% endif %}
+
+<div class="qchip-row">
+  {% for os in obs_stages %}
+  <a class="qchip stage-chip {{ 'on' if os == stage }}"
+     href="/wb/stage?session_id={{ s.id }}{% if group %}&group_id={{ group.id }}{% endif %}&stage={{ os | urlencode }}">
+    <span class="qchip-code">{{ t('stage.' ~ os) }}</span>
+  </a>
+  {% endfor %}
+</div>
+
+{% if not students %}
+<div class="card"><p class="muted">
+  {% if teacher.role == 'admin' %}
+    {{ t('wb.no_group_students') }} <a href="/admin/sessions/{{ s.id }}">{{ t('wb.console') }}</a>{{ t('wb.no_group_students2') }}
+  {% else %}
+    {{ t('wb.no_assigned') }}
+  {% endif %}
+</p></div>
+{% else %}
+
+{% if stage == 'Separation' %}
+<p class="stage-hint">{{ t('sep.hint') }}</p>
+<div class="card-grid wide">
+  {% for st in students %}
+  {% set rows = obs_by_student.get(st.id, []) %}
+  {% set o = rows[0] if rows else None %}
+  <div class="obs-card single-card sep-card" data-student="{{ st.id }}" data-stage="Separation">
+    <div class="qcard-head">
+      <span class="stname">{{ st.name }}</span>
+      <span class="lv-badge lv-{{ st.level }}">{{ st.level }}</span>
+      <span class="save-ind"></span>
+    </div>
+    <div class="sep-pills">
+      <button type="button" class="sep-pill sp-good {{ 'on' if o and o.response == 'independent' }}" data-resp="independent">{{ t('sep.independent') }}</button>
+      <button type="button" class="sep-pill sp-mid {{ 'on' if o and o.response == 'brief' }}" data-resp="brief">{{ t('sep.brief') }}</button>
+      <button type="button" class="sep-pill sp-low {{ 'on' if o and o.response == 'support' }}" data-resp="support">{{ t('sep.support') }}</button>
+      <button type="button" class="sep-pill {{ 'on' if o and o.response == 'not_observed' }}" data-resp="not_observed">{{ t('pill.not_observed') }}</button>
+    </div>
+    <textarea class="sep-note" placeholder="{{ t('sep.note.placeholder') }}">{{ o.note if o else '' }}</textarea>
+    <div class="qcard-foot">
+      {% if o and o.teacher_id %}<span class="by">{{ t('macro.by') }} {{ teacher_names.get(o.teacher_id, '') }}</span>{% endif %}
+    </div>
+  </div>
+  {% endfor %}
+</div>
+
+{% elif stage == 'Circle Time' %}
+<p class="stage-hint">{{ t('circle.hint') }} {{ t('dims.hint') }}</p>
+<div class="prompt-panel card">
+  <div class="rubric-head">{{ t('circle.prompts') }}</div>
+  <div class="prompt-row">
+    {% for p in prompts %}
+    <button type="button" class="prompt-chip {{ 'on' if loop.first }}" data-idx="{{ loop.index }}">P{{ loop.index }}</button>
+    {% endfor %}
+  </div>
+  {% for p in prompts %}
+  <div class="prompt-text {{ 'show' if loop.first }}" data-idx="{{ loop.index }}">{{ p }}</div>
+  {% endfor %}
+</div>
+
+<div class="card-grid wide">
+  {% for st in students %}
+  <div class="obs-card" data-student="{{ st.id }}" data-stage="{{ stage }}">
+    <div class="qcard-head">
+      <span class="stname">{{ st.name }}</span>
+      <span class="lv-badge lv-{{ st.level }}">{{ st.level }}</span>
+      <span class="save-ind"></span>
+    </div>
+    <input type="text" class="obs-note" placeholder="{{ t('obs.note.placeholder') }}">
+    <div class="resp-row">
+      <button type="button" class="resp-btn rb-good" data-resp="independent" data-label="{{ t('resp.independent') }}">{{ t('resp.independent') }}</button>
+      <button type="button" class="resp-btn rb-mid" data-resp="prompted" data-label="{{ t('resp.prompted') }}">{{ t('resp.prompted') }}</button>
+      <button type="button" class="resp-btn rb-low" data-resp="none" data-label="{{ t('resp.none') }}">{{ t('resp.none') }}</button>
+    </div>
+    <div class="obs-log">
+      {% for o in obs_by_student.get(st.id, []) %}
+      {% if o.prompt_index %}
+      <div class="obs-item" data-id="{{ o.id }}" data-prompt="{{ o.prompt_index or '' }}">
+        <span class="obs-p">P{{ o.prompt_index }}</span>
+        <span class="obs-resp r-{{ o.response }}">{{ t('resp.' ~ o.response) }}</span>
+        {% if o.note %}<span class="obs-note-txt">{{ o.note }}</span>{% endif %}
+        <span class="by">{{ teacher_names.get(o.teacher_id, '') }} · {{ o.created_at.strftime('%H:%M') }}</span>
+        <button type="button" class="obs-del" title="Delete">&times;</button>
+      </div>
+      {% endif %}
+      {% endfor %}
+    </div>
+    <div class="dim-divider">{{ t('dims.head') }}</div>
+    {{ dimblock(st, stage_dims, dimvals) }}
+  </div>
+  {% endfor %}
+</div>
+
+{% else %}
+<p class="stage-hint">{{ t('dims.general_hint') }}</p>
+<div class="card-grid wide">
+  {% for st in students %}
+  {% set rows = obs_by_student.get(st.id, []) %}
+  {% set o = rows[0] if rows else None %}
+  <div class="obs-card dim-card" data-student="{{ st.id }}" data-stage="{{ stage }}">
+    <div class="qcard-head">
+      <span class="stname">{{ st.name }}</span>
+      <span class="lv-badge lv-{{ st.level }}">{{ st.level }}</span>
+      <span class="save-ind"></span>
+    </div>
+    {{ dimblock(st, stage_dims, dimvals) }}
+    <textarea class="sep-note" placeholder="{{ t('obs.note.placeholder') }}">{{ o.note if o else '' }}</textarea>
+    <div class="qcard-foot">
+      {% if o and o.teacher_id %}<span class="by">{{ t('macro.by') }} {{ teacher_names.get(o.teacher_id, '') }}</span>{% endif %}
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+{% endif %}
+{% endblock %}

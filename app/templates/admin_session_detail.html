@@ -1,0 +1,114 @@
+{% extends "base.html" %}
+{% block title %}{{ s.label }} · {{ t('nav.admin') }}{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <div class="kicker"><a href="/admin/sessions">{{ t('nav.admin') | upper }} · {{ t('admin.sessions.title') | upper }}</a></div>
+    <h1>{{ s.label }} <span class="muted-h">{{ s.date }}</span></h1>
+  </div>
+  <div class="head-actions">
+    <a class="btn" href="/admin/sessions/{{ s.id }}/grouping">{{ t('btn.grouping') }}</a>
+    <a class="btn btn-ghost" href="/wb">{{ t('btn.open_wb') }}</a>
+  </div>
+</div>
+<div class="muted small" style="margin-top:-10px; margin-bottom:14px;">{{ t('gb.steps') }}</div>
+{% if msg %}<div class="flash">{{ msg }}</div>{% endif %}
+
+<div class="card">
+  <div class="card-head"><span class="sec-num">01</span> {{ t('admin.import') }}</div>
+  <div class="import-grid">
+    <form method="post" action="/admin/sessions/{{ s.id }}/students/upload" enctype="multipart/form-data" class="import-box import-main">
+      <div class="import-title">{{ t('admin.upload_file') }}</div>
+      <p class="muted small">{{ t('admin.upload_hint') }}</p>
+      <input type="file" name="file" accept=".csv,.xlsx,.txt" required>
+      <button class="btn" type="submit">{{ t('btn.upload') }}</button>
+    </form>
+    <form method="post" action="/admin/sessions/{{ s.id }}/students/add" class="import-box">
+      <div class="import-title">{{ t('admin.add_one') }}</div>
+      <label>{{ t('label.name') }} <input type="text" name="name" required></label>
+      <label>{{ t('label.level') }}
+        <select name="level"><option>TK</option><option>K</option></select>
+      </label>
+      <label>{{ t('label.id') }} <input type="text" name="external_id" placeholder="{{ t('placeholder.optional') }}"></label>
+      <button class="btn" type="submit">{{ t('btn.add') }}</button>
+    </form>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-head"><span class="sec-num">02</span> {{ t('admin.groups') }}</div>
+  <div class="group-row">
+    {% for g in groups %}
+    <div class="group-card" data-group="{{ g.id }}">
+      <div class="group-name">{{ g.name }}</div>
+      <div class="group-count">{{ g.students | length }} {{ t('n.students') }}</div>
+      <select class="group-teacher" data-group="{{ g.id }}">
+        <option value="">{{ t('opt.no_teacher') }}</option>
+        {% for te in teachers %}
+        <option value="{{ te.id }}" {{ 'selected' if g.teacher_id == te.id }}>{{ te.name }}</option>
+        {% endfor %}
+      </select>
+      <form method="post" action="/admin/groups/{{ g.id }}/delete" class="inline"
+            onsubmit="return confirm('{{ t('confirm.delete_group') }}')">
+        <button class="btn btn-danger btn-sm" type="submit">{{ t('btn.delete') }}</button>
+      </form>
+    </div>
+    {% endfor %}
+    <form method="post" action="/admin/sessions/{{ s.id }}/groups/add" class="group-card group-add">
+      <input type="text" name="name" placeholder="{{ t('placeholder.group_name') }}" required>
+      <select name="teacher_id">
+        <option value="">{{ t('opt.teacher') }}</option>
+        {% for te in teachers %}<option value="{{ te.id }}">{{ te.name }}</option>{% endfor %}
+      </select>
+      <button class="btn btn-sm" type="submit">{{ t('btn.add_group') }}</button>
+    </form>
+  </div>
+  {% if not teachers %}
+  <p class="muted">{{ t('admin.need_teachers') }} <a href="/admin/teachers">{{ t('admin.teachers.link') }}</a> {{ t('admin.need_teachers2') }}</p>
+  {% endif %}
+</div>
+
+<div class="card">
+  <div class="card-head"><span class="sec-num">03</span> {{ t('admin.students') }} <span class="muted">({{ students | length }})</span></div>
+  {% if students %}
+  <table class="table">
+    <tr>
+      <th>{{ t('label.name') }}</th><th>{{ t('label.id') }}</th><th>{{ t('th.grade') }}</th>
+      <th>{{ t('th.course') }}</th><th>{{ t('label.level') }}</th><th>{{ t('th.group') }}</th><th></th>
+    </tr>
+    {% for st in students %}
+    <tr>
+      <td>{{ st.name }}</td>
+      <td class="muted">{{ st.external_id }}</td>
+      <td class="muted small">{{ st.grade }}</td>
+      <td class="muted small course-cell" title="{{ st.course }}">{{ st.course }}</td>
+      <td>
+        <select class="student-level {{ 'lv-missing' if st.level not in ('TK', 'K') }}"
+                data-student="{{ st.id }}" title="{{ t('lv.unknown') if st.level not in ('TK', 'K') }}">
+          {% if st.level not in ('TK', 'K') %}<option value="" selected>?</option>{% endif %}
+          <option value="TK" {{ 'selected' if st.level == 'TK' }}>TK</option>
+          <option value="K" {{ 'selected' if st.level == 'K' }}>K</option>
+        </select>
+      </td>
+      <td>
+        <select class="student-group" data-student="{{ st.id }}">
+          <option value="">{{ t('opt.none') }}</option>
+          {% for g in groups %}
+          <option value="{{ g.id }}" {{ 'selected' if st.group_id == g.id }}>{{ g.name }}</option>
+          {% endfor %}
+        </select>
+      </td>
+      <td class="t-actions">
+        <form method="post" action="/admin/students/{{ st.id }}/delete" class="inline"
+              onsubmit="return confirm('{{ t('confirm.remove_student') }}')">
+          <button class="btn btn-danger btn-sm" type="submit">{{ t('btn.remove') }}</button>
+        </form>
+      </td>
+    </tr>
+    {% endfor %}
+  </table>
+  {% else %}
+  <p class="muted">{{ t('admin.no_students') }}</p>
+  {% endif %}
+</div>
+{% endblock %}

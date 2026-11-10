@@ -1,0 +1,107 @@
+{% macro wbnav(s, mode) %}
+<div class="wb-nav">
+  <a class="wbn {{ 'on' if mode == 'stages' }}" href="/wb/stage?session_id={{ s.id }}">{{ t('btn.stages') }}</a>
+  <a class="wbn {{ 'on' if mode == 'individual' }}" href="/wb/list?session_id={{ s.id }}">{{ t('btn.individual') }}</a>
+  <a class="wbn {{ 'on' if mode == 'review' }}" href="/wb/review?session_id={{ s.id }}">{{ t('btn.review') }}</a>
+</div>
+{% endmacro %}
+
+{% macro rubric_block(q) %}
+<div class="rubric">
+  <div class="rubric-col">
+    <div class="rubric-head">{{ t('macro.academic') }}</div>
+    <div class="rline"><span class="rn">2</span><span>{{ q.r2 }}</span></div>
+    <div class="rline"><span class="rn">1</span><span>{{ q.r1 }}</span></div>
+    <div class="rline"><span class="rn">0</span><span>{{ q.r0 }}</span></div>
+  </div>
+  {% if q.has_expression %}
+  <div class="rubric-col">
+    <div class="rubric-head">{{ t('macro.expression') }}</div>
+    <div class="rline"><span class="rn rn-e">2</span><span>{{ q.e2 }}</span></div>
+    <div class="rline"><span class="rn rn-e">1</span><span>{{ q.e1 }}</span></div>
+    <div class="rline"><span class="rn rn-e">0</span><span>{{ q.e0 }}</span></div>
+  </div>
+  {% endif %}
+</div>
+{% endmacro %}
+
+{% macro qpanel(q, show_level=False) %}
+<div class="qpanel">
+  <div class="qpanel-head">
+    {% if show_level %}<span class="lv-badge lv-{{ q.version }}">{{ q.version }}</span>{% endif %}
+    <span class="qcode">{{ q.code }}</span>
+    <span class="qtitle">{{ q.title }}</span>
+    <span class="qability">{{ q.domain }} · {{ q.ability }}</span>
+  </div>
+  <div class="qprompt">{{ q.prompt }}</div>
+  {% if q.target %}<div class="qmeta"><b>{{ t('macro.target') }}:</b> {{ q.target }}</div>{% endif %}
+  {% if q.setup %}<div class="qmeta qsetup"><b>{{ t('macro.setup') }}:</b> {{ q.setup }}</div>{% endif %}
+  {{ rubric_block(q) }}
+</div>
+{% endmacro %}
+
+{% macro qcard(st, q, rec, teacher_names, show_name=True, teacher_id_ctx=0) %}
+{% set r = rec if rec else None %}
+<div class="qcard {{ 'st-' + r.status if r and r.status }}"
+     data-student="{{ st.id }}" data-code="{{ q.code }}"
+     data-rev="{{ r.rev if r else 0 }}" data-status="{{ r.status if r and r.status else '' }}">
+  {% if show_name %}
+  <div class="qcard-head">
+    <a class="stname" href="/wb/student/{{ st.id }}">{{ st.name }}</a>
+    <span class="lv-badge lv-{{ st.level }}">{{ st.level }}</span>
+    <span class="save-ind"></span>
+  </div>
+  {% else %}
+  <div class="qcard-head slim"><span class="save-ind"></span></div>
+  {% endif %}
+  <div class="conflict-bar"></div>
+
+  <div class="ctrl-row">
+    <span class="ctrl-label">{{ t('macro.task') }}</span>
+    <div class="btn-group">
+      {% for v in [0, 1, 2] %}
+      <button type="button" class="sbtn {{ 'on' if r and r.academic == v and r.status != 'not_observed' and r.status != 'not_completed' }}"
+              data-kind="a" data-val="{{ v }}">{{ v }}</button>
+      {% endfor %}
+    </div>
+  </div>
+
+  {% if q.has_expression %}
+  <div class="ctrl-row">
+    <span class="ctrl-label">{{ t('macro.expr') }}</span>
+    <div class="btn-group">
+      {% for v in [0, 1, 2] %}
+      <button type="button" class="sbtn sbtn-e {{ 'on' if r and r.expression == v and r.status != 'not_observed' and r.status != 'not_completed' }}"
+              data-kind="e" data-val="{{ v }}">{{ v }}</button>
+      {% endfor %}
+    </div>
+  </div>
+  {% endif %}
+
+  {% if q.trial_max %}
+  <div class="ctrl-row">
+    <span class="ctrl-label">{{ t('macro.correct') }}</span>
+    <div class="stepper">
+      <button type="button" class="tminus">&minus;</button>
+      <span class="trial-val" data-val="{{ r.trial if r and r.trial is not none else '' }}"
+            data-max="{{ q.trial_max }}">{{ r.trial if r and r.trial is not none else '–' }}</span>
+      <button type="button" class="tplus">+</button>
+      <span class="trial-max">/ {{ q.trial_max }}</span>
+    </div>
+  </div>
+  {% endif %}
+
+  <div class="ctrl-row pills-row">
+    <button type="button" class="pill {{ 'on' if r and r.status == 'not_observed' }}" data-status="not_observed">{{ t('pill.not_observed') }}</button>
+    <button type="button" class="pill {{ 'on' if r and r.status == 'not_completed' }}" data-status="not_completed">{{ t('pill.not_completed') }}</button>
+    <button type="button" class="note-btn {{ 'has-note' if r and r.note }}">{{ t('btn.note') }}</button>
+  </div>
+
+  <div class="note-wrap {{ 'open' if r and r.note }}">
+    <textarea class="note-ta" placeholder="{{ t('note.placeholder') }}">{{ r.note if r else '' }}</textarea>
+  </div>
+  <div class="qcard-foot">
+    {% if r and r.teacher_id %}<span class="by">{{ t('macro.by') }} {{ teacher_names.get(r.teacher_id, '') }}</span>{% endif %}
+  </div>
+</div>
+{% endmacro %}

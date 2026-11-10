@@ -1,0 +1,15 @@
+# 本地数据与密钥：学生数据库 app.db、OpenAI 密钥 openai_key.txt、会话签名 secret.key —— 永不入库
+data/
+
+# 下载的二进制工具（cloudflared 约 53MB，新电脑按 README 重新下载）
+tools/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# 系统杂项
+.DS_Store
+Thumbs.db
