@@ -30,7 +30,7 @@ python -m uvicorn app.main:app --host 0.0.0.0 --port 8008
    - **Admin → 题库管理**：每个场次绑定一个题库；新测评 = 复制现有题库 → 编辑题目（题面/目标/评分标准/表达/计数全可改），旧场次不受影响
 3. **Workbench**：登录后选场次（身份即登录老师），三个环节：
    - **集体环节**（多维度评价，数字化自纸质 Group 打分表）：Separation 分离适应（三级单选 + 备注）；Circle Time（8 个 Let's Talk 提问逐条回应 **+ 整体维度** Participation/Focus/Listen/Empathy）；Show & Share（Initiative/Confidence/Fluency/Listen 四维）；剪纸绘画 与 Ticket 制作（Follow Instruction/Fine Motor/Sharing/Problem Solving/Creativity/Attitude 六维）。每维单选档位、再点取消；维度词表在 `app/seed.py` 的 `STAGE_DIMS` 可改
-   - **个人面试**：12 道题逐题记录（0/1/2 标准显示在题旁、表达分、逐项计数、备注），左侧学生名单栏（竖屏为抽屉）+ SEL/课堂事件
+   - **个人面试**：12 道题逐题记录，左侧学生名单栏（竖屏为抽屉）+ SEL/课堂事件。**任务得分** = 该题学术分，按钮直接标注含义（0 未能完成 / 1 引导后完成 / 2 独立完成，具体标准见题旁 SCORE 原文）；**表达得分** = 口头表达（0 无回应 / 1 单词短语 / 2 完整句子）；**答对小项** = 该题含多个小项时（如 E01 的 6 个字母）记答对个数，报告里显示为 "6/6 correct"。选最优档变绿、中间档琥珀、最低档红
    - （原「群面打分」已删除——它与集体环节重复；旧链接自动跳转集体环节）
    - **Review 汇总复核**：全场学生 × 12 题状态矩阵，缺项高亮，点格子直达补录；分离/Circle/事件计数；逐生确认复核（记录确认人与时间）
 4. 右上角「中文 / EN」切换界面语言（按设备记住）

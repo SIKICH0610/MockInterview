@@ -60,8 +60,11 @@
     <span class="ctrl-label">{{ t('macro.task') }}</span>
     <div class="btn-group">
       {% for v in [0, 1, 2] %}
-      <button type="button" class="sbtn {{ 'on' if r and r.academic == v and r.status != 'not_observed' and r.status != 'not_completed' }}"
-              data-kind="a" data-val="{{ v }}">{{ v }}</button>
+      <button type="button" class="sbtn {{ ['sb-low', 'sb-mid', 'sb-good'][v] }} {{ 'on' if r and r.academic == v and r.status != 'not_observed' and r.status != 'not_completed' }}"
+              data-kind="a" data-val="{{ v }}">
+        <span class="sbtn-num">{{ v }}</span>
+        <span class="sbtn-sub">{{ t('sbtn.a' ~ v) }}</span>
+      </button>
       {% endfor %}
     </div>
   </div>
@@ -71,8 +74,11 @@
     <span class="ctrl-label">{{ t('macro.expr') }}</span>
     <div class="btn-group">
       {% for v in [0, 1, 2] %}
-      <button type="button" class="sbtn sbtn-e {{ 'on' if r and r.expression == v and r.status != 'not_observed' and r.status != 'not_completed' }}"
-              data-kind="e" data-val="{{ v }}">{{ v }}</button>
+      <button type="button" class="sbtn sbtn-e {{ ['sb-low', 'sb-mid', 'sb-good'][v] }} {{ 'on' if r and r.expression == v and r.status != 'not_observed' and r.status != 'not_completed' }}"
+              data-kind="e" data-val="{{ v }}">
+        <span class="sbtn-num">{{ v }}</span>
+        <span class="sbtn-sub">{{ t('sbtn.e' ~ v) }}</span>
+      </button>
       {% endfor %}
     </div>
   </div>
@@ -87,6 +93,7 @@
             data-max="{{ q.trial_max }}">{{ r.trial if r and r.trial is not none else '–' }}</span>
       <button type="button" class="tplus">+</button>
       <span class="trial-max">/ {{ q.trial_max }}</span>
+      <span class="trial-hint">{{ t('trial.hint') }}</span>
     </div>
   </div>
   {% endif %}
