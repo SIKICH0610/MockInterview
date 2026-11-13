@@ -29,7 +29,7 @@
       <td>{{ se.label }}</td>
       <td class="t-actions">
         <a class="btn btn-ghost" href="/admin/sessions/{{ se.id }}">{{ t('btn.manage') }}</a>
-        <a class="btn" href="/wb">{{ t('btn.open_wb') }}</a>
+        <a class="btn" href="/wb/stage?session_id={{ se.id }}">{{ t('btn.open_wb') }}</a>
       </td>
     </tr>
     {% endfor %}

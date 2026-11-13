@@ -1,0 +1,155 @@
+{% extends "base.html" %}
+{% from "_macros.html" import media_block, media_editor %}
+{% set is_bank = mode in ('bank_new', 'bank_edit') %}
+{% set is_new = mode in ('bank_new', 'paper_new') %}
+{% set qt = obj.qtype or 'single' %}
+{% block title %}{{ obj.title or t('bank.new_q') }} · {{ t('bank.title') if is_bank else t('papers.title') }}{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <div class="kicker">
+      {% if is_bank %}<a href="/admin/bank">{{ t('bank.title') | upper }}</a>
+      {% else %}<a href="/admin/papers">{{ t('papers.title') | upper }}</a> · <a href="/admin/papers/{{ paper.id }}">{{ paper.name }}</a>{% endif %}
+    </div>
+    <h1>
+      {% if not is_bank %}<span class="lv-badge lv-{{ obj.version }}">{{ obj.version }}</span>{% if obj.code and not is_new %} {{ obj.code }}{% endif %}{% endif %}
+      {{ t('bank.new_q') if is_new else t('q.edit') }}
+    </h1>
+  </div>
+</div>
+{% if msg %}<div class="flash">{{ msg }}</div>{% endif %}
+{% if mode == 'paper_new' %}<p class="stage-hint">{{ t('bank.new_in_paper_hint') }}</p>{% endif %}
+{% if locked %}<div class="flash flash-err">{{ t('papers.locked_edit') }}</div>{% endif %}
+{% if used_in %}<p class="stage-hint">{{ t('bank.used_in') }}: {{ used_in | join(', ') }}. {{ t('bank.copy_note') }}</p>{% endif %}
+
+<form method="post" action="{{ action }}" enctype="multipart/form-data" class="card q-form" id="qform"
+      data-defaults='{{ defaults | tojson | forceescape }}'>
+  {% if mode == 'paper_new' %}<input type="hidden" name="version" value="{{ obj.version }}">{% endif %}
+
+  <div class="qf-section">{{ t('bank.step_stem') }}</div>
+  <div class="q-grid">
+    <label>{{ t('q.title') }} <input type="text" name="title" value="{{ obj.title or '' }}" required maxlength="160"></label>
+    <label>{{ t('q.domain') }}
+      <select name="domain" {{ 'disabled' if locked }}>
+        {% for d in domains %}<option value="{{ d }}" {{ 'selected' if obj.domain == d }}>{{ t('domain.' ~ d) }}</option>{% endfor %}
+      </select>
+    </label>
+    {% if is_bank %}
+    <label>{{ t('label.level') }}
+      <select name="level">
+        <option value="" {{ 'selected' if not obj.level }}>TK + K</option>
+        {% for lv in levels %}<option value="{{ lv }}" {{ 'selected' if obj.level == lv }}>{{ lv }}</option>{% endfor %}
+      </select>
+    </label>
+    {% endif %}
+  </div>
+  <label class="q-full">{{ t('bank.prompt') }} <textarea name="prompt" rows="3">{{ obj.prompt or '' }}</textarea></label>
+  <label class="q-full">{{ t('macro.target') }} <textarea name="target" rows="2">{{ obj.target or '' }}</textarea></label>
+  <label class="q-full">{{ t('macro.setup') }} <textarea name="setup" rows="2">{{ obj.setup or '' }}</textarea></label>
+  {% if crop %}
+  <div class="pdf-crop-pick">
+    <input type="hidden" name="pdf_id" value="{{ crop.pdf }}">
+    <input type="hidden" name="pdf_page" value="{{ crop.page }}">
+    <input type="hidden" name="pdf_rect" value="{{ crop.rect }}">
+    <span class="muted small">{{ t('pdf.crop_will_attach') }}</span>
+    <img src="{{ crop.url }}" alt="">
+  </div>
+  {% endif %}
+  <label class="q-full">{{ t('bank.files') }}
+    <input type="file" name="files" multiple accept=".pdf,image/png,image/jpeg,image/gif,image/webp">
+    <span class="muted small">{{ t('bank.files_hint') }}</span>
+  </label>
+  {% if mode == 'bank_edit' or mode == 'paper_edit' %}
+  <a class="btn btn-ghost btn-sm pdf-link" href="/admin/pdfs?target={{ ('bank:' if mode == 'bank_edit' else 'q:') ~ obj.id }}">{{ t('pdf.cut_from_pdf') }}</a>
+  {% endif %}
+
+  <div class="qf-section">{{ t('bank.step_type') }}</div>
+  {% if locked %}<p class="muted small">{{ t('papers.locked_type') }}</p>{% endif %}
+  <div class="qtype-row">
+    {% for x in qtypes %}
+    <label class="qtype-card {{ 'on' if qt == x }}">
+      <input type="radio" name="qtype" value="{{ x }}" {{ 'checked' if qt == x }} {{ 'disabled' if locked }}>
+      <span class="qtype-name">{{ t('qtype.' ~ x) }}</span>
+      <span class="qtype-desc">{{ t('qtype.' ~ x ~ '.desc') }}</span>
+    </label>
+    {% endfor %}
+  </div>
+  <label class="qf-count" {{ 'hidden' if qt != 'count' }}>{{ t('bank.count_n') }}
+    <input type="number" name="trial_max" min="1" max="30" value="{{ obj.trial_max or 6 }}" {{ 'disabled' if locked }}></label>
+
+  <div class="qf-section">{{ t('bank.step_ability') }}</div>
+  <div class="q-grid">
+    <label>{{ t('bank.ability') }}
+      <input type="text" name="ability" value="{{ obj.ability or '' }}" list="ability-list" required maxlength="48"
+             placeholder="{{ t('bank.ability_ph') }}">
+      <datalist id="ability-list">
+        {% for d, abs in abilities.items() %}{% for a in abs %}<option value="{{ a }}">{{ t('domain.' ~ d) }}</option>{% endfor %}{% endfor %}
+      </datalist>
+    </label>
+    {% if is_bank or mode == 'paper_new' %}
+    <label>{{ t('bank.tags') }} <input type="text" name="tags" value="{{ obj.tags or '' }}" placeholder="{{ t('bank.tags_ph') }}"></label>
+    {% endif %}
+  </div>
+  <p class="muted small">{{ t('bank.ability_hint') }}</p>
+
+  <div class="qf-section">{{ t('q.r') }}</div>
+  <div class="q-grid">
+    <label>2 <input type="text" name="r2" value="{{ obj.r2 or '' }}"></label>
+    <label>1 <input type="text" name="r1" value="{{ obj.r1 or '' }}"></label>
+    <label>0 <input type="text" name="r0" value="{{ obj.r0 or '' }}"></label>
+  </div>
+  <div class="qf-expr" {{ 'hidden' if qt != 'expr' }}>
+    <div class="qf-section">{{ t('bank.e_rubric') }}</div>
+    <div class="q-grid">
+      <label>2 <input type="text" name="e2" value="{{ obj.e2 or '' }}"></label>
+      <label>1 <input type="text" name="e1" value="{{ obj.e1 or '' }}"></label>
+      <label>0 <input type="text" name="e0" value="{{ obj.e0 or '' }}"></label>
+    </div>
+  </div>
+
+  {% if mode == 'paper_edit' and obj.bank_id %}
+  <label class="inline-check" style="margin-top:12px"><input type="checkbox" name="save_bank" value="1"> {{ t('bank.save_back') }}</label>
+  {% endif %}
+
+  <div class="qf-actions">
+    <button class="btn" type="submit">{{ t('btn.save') }}</button>
+    <a class="btn btn-ghost" href="{{ back }}">{{ t('bank.back') }}</a>
+  </div>
+</form>
+
+{% if media %}
+<div class="card">
+  <div class="card-head">{{ t('bank.media_head') }}</div>
+  <p class="muted small">{{ t('media.editor_hint') }}</p>
+  {{ media_editor(media, action if mode.endswith('edit') else back) }}
+</div>
+{% endif %}
+
+{% if mode == 'bank_edit' %}
+<form method="post" action="/admin/bank/{{ obj.id }}/delete" class="inline"
+      onsubmit="return confirm({{ t('bank.delete_confirm') | tojson }})">
+  <button class="btn btn-danger btn-sm" type="submit">{{ t('bank.delete') }}</button>
+</form>
+{% endif %}
+
+<script>
+(function () {
+  const form = document.getElementById("qform");
+  const D = JSON.parse(form.dataset.defaults);
+  let cur = form.querySelector("input[name=qtype]:checked")?.value || "single";
+  form.querySelectorAll("input[name=qtype]").forEach((r) => r.addEventListener("change", () => {
+    const next = r.value;
+    form.querySelectorAll(".qtype-card").forEach((c) => c.classList.toggle("on", c.contains(r)));
+    form.querySelector(".qf-expr").hidden = next !== "expr";
+    form.querySelector(".qf-count").hidden = next !== "count";
+    // swap the rubric wording only where it is still the old type's default
+    ["r2", "r1", "r0", "e2", "e1", "e0"].forEach((k) => {
+      const el = form.querySelector(`[name=${k}]`);
+      if (!el) return;
+      if (!el.value.trim() || el.value === D[cur][k]) el.value = D[next][k];
+    });
+    cur = next;
+  }));
+})();
+</script>
+{% endblock %}

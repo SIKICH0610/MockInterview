@@ -1,0 +1,14 @@
+# Daily database backup: pg_dump when MI_DATABASE_URL points at PostgreSQL,
+# otherwise a copy of data/app.db. Keeps 14 days in /var/lib/mockinterview/backup.
+# Runs via mockinterview-backup.timer. Needs the postgresql18 client package.
+[Unit]
+Description=Back up the Assessment Workbench database
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=mockinterview
+Group=mockinterview
+WorkingDirectory=/opt/mockinterview
+EnvironmentFile=/etc/mockinterview.env
+ExecStart=/opt/mockinterview/.venv/bin/python scripts/backup_db.py

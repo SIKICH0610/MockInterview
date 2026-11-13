@@ -8,7 +8,8 @@
   </div>
   <div class="head-actions">
     <a class="btn" href="/admin/sessions/{{ s.id }}/grouping">{{ t('btn.grouping') }}</a>
-    <a class="btn btn-ghost" href="/wb">{{ t('btn.open_wb') }}</a>
+    <a class="btn btn-ghost" href="/admin/sessions/{{ s.id }}/email">{{ t('btn.send_reports') }}</a>
+    <a class="btn btn-ghost" href="/wb/stage?session_id={{ s.id }}">{{ t('btn.open_wb') }}</a>
   </div>
 </div>
 <div class="muted small" style="margin-top:-10px; margin-bottom:14px;">{{ t('gb.steps') }}</div>
@@ -30,6 +31,7 @@
         <select name="level"><option>TK</option><option>K</option></select>
       </label>
       <label>{{ t('label.id') }} <input type="text" name="external_id" placeholder="{{ t('placeholder.optional') }}"></label>
+      <label>{{ t('th.parent_email') }} <input type="text" name="parent_email" placeholder="{{ t('placeholder.optional') }}"></label>
       <button class="btn" type="submit">{{ t('btn.add') }}</button>
     </form>
   </div>
@@ -73,13 +75,15 @@
   {% if students %}
   <table class="table">
     <tr>
-      <th>{{ t('label.name') }}</th><th>{{ t('label.id') }}</th><th>{{ t('th.grade') }}</th>
+      <th>{{ t('label.name') }}</th><th>{{ t('label.id') }}</th><th>{{ t('th.parent_email') }}</th><th>{{ t('th.grade') }}</th>
       <th>{{ t('th.course') }}</th><th>{{ t('label.level') }}</th><th>{{ t('th.group') }}</th><th></th>
     </tr>
     {% for st in students %}
     <tr>
       <td>{{ st.name }}</td>
       <td class="muted">{{ st.external_id }}</td>
+      <td><input type="text" class="student-email {{ 'em-missing' if not st.parent_email }}" data-student="{{ st.id }}"
+                 value="{{ st.parent_email or '' }}" placeholder="{{ t('placeholder.parent_email') }}"></td>
       <td class="muted small">{{ st.grade }}</td>
       <td class="muted small course-cell" title="{{ st.course }}">{{ st.course }}</td>
       <td>

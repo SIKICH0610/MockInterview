@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+{% from "_macros.html" import bank_tabs %}
+{% block title %}{{ t('bank.tab_team') }} · {{ t('bank.title') }}{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <div class="kicker"><a href="/admin/sessions">{{ t('nav.admin') | upper }}</a></div>
+    <h1>{{ t('bank.title') }} <span class="muted-h">{{ items | length }}</span></h1>
+  </div>
+  <div class="head-actions">
+    {% if pick_paper %}
+    <a class="btn btn-ghost" href="/admin/papers/{{ pick_paper.id }}">{{ t('bank.back_to_paper') }}</a>
+    {% else %}
+    <a class="btn btn-ghost" href="/admin/papers">{{ t('papers.title') }}</a>
+    <a class="btn btn-ghost" href="/admin/pdfs?new=team">{{ t('pdf.from_pdf_new') }}</a>
+    <a class="btn" href="/admin/teambank/new{% if f.stage %}?stage={{ f.stage | urlencode }}{% endif %}">+ {{ t('bank.new_team') }}</a>
+    {% endif %}
+  </div>
+</div>
+{{ bank_tabs('team', pick_paper) }}
+{% if msg %}<div class="flash">{{ msg }}</div>{% endif %}
+{% if pick_paper %}
+<div class="flash">{{ t('bank.picking_team').format(paper=pick_paper.name, stage=t('stage.' ~ f.stage) if f.stage else '') }}</div>
+{% else %}
+<p class="stage-hint">{{ t('bank.team_hint') }}</p>
+{% endif %}
+
+<form method="get" action="/admin/teambank" class="card bank-filter">
+  {% if pick_paper %}<input type="hidden" name="pick" value="{{ pick_paper.id }}">{% endif %}
+  <label>{{ t('bank.stage') }}
+    <select name="stage">
+      <option value="">{{ t('bank.all') }}</option>
+      {% for st in stages %}<option value="{{ st }}" {{ 'selected' if f.stage == st }}>{{ t('stage.' ~ st) }}</option>{% endfor %}
+    </select>
+  </label>
+  <label class="bank-q">{{ t('bank.search') }} <input type="search" name="q" value="{{ f.q }}" placeholder="{{ t('bank.search_ph') }}"></label>
+  <div class="bank-filter-btns">
+    <button class="btn" type="submit">{{ t('bank.filter') }}</button>
+    <a class="btn btn-ghost" href="/admin/teambank{% if pick_paper %}?pick={{ pick_paper.id }}{% endif %}">{{ t('bank.reset') }}</a>
+  </div>
+</form>
+
+<div class="card">
+  {% if items %}
+  <table class="table bank-table">
+    <tr><th>{{ t('q.title') }}</th><th>{{ t('bank.stage') }}</th><th>{{ t('bank.used') }}</th><th></th></tr>
+    {% for a in items %}
+    <tr>
+      <td>
+        <b>{{ a.title }}</b>
+        {% if media_n.get(a.id) %}<span class="bank-media-n">▣ {{ media_n[a.id] }}</span>{% endif %}
+        <div class="muted small">{{ a.prompt | truncate(140) }}</div>
+        {% if a.tags %}<div class="bank-tags">{% for tg in a.tags.split(',') if tg.strip() %}<span class="bank-tag">{{ tg.strip() }}</span>{% endfor %}</div>{% endif %}
+      </td>
+      <td class="small">{{ t('stage.' ~ a.stage) }}</td>
+      <td class="small muted">{{ used.get(a.id, 0) }}</td>
+      <td class="t-actions">
+        {% if pick_paper %}
+        <form method="post" action="/admin/papers/{{ pick_paper.id }}/stage_cite" class="inline"
+              onsubmit="return confirm({{ t('bank.cite_team_confirm') | tojson }})">
+          <input type="hidden" name="activity_id" value="{{ a.id }}">
+          <button class="btn btn-sm" type="submit">{{ t('bank.cite') }}</button>
+        </form>
+        <a class="btn btn-ghost btn-sm" href="/admin/teambank/{{ a.id }}" target="_blank">{{ t('bank.view') }}</a>
+        {% else %}
+        <a class="btn btn-ghost btn-sm" href="/admin/teambank/{{ a.id }}">{{ t('q.edit') }}</a>
+        {% endif %}
+      </td>
+    </tr>
+    {% endfor %}
+  </table>
+  {% else %}
+  <p class="muted">{{ t('bank.empty_team') }}</p>
+  {% endif %}
+</div>
+{% endblock %}

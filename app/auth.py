@@ -16,10 +16,26 @@ SECRET_PATH = os.path.join(DATA_DIR, "secret.key")
 TOKEN_TTL = 24 * 3600  # one sign-in lasts a day
 _secret_cache = None
 
+# Behind HTTPS (the cloud server) set MI_COOKIE_SECURE=1 so the sign-in cookie
+# is never sent over plain HTTP. Leave unset for http://localhost development.
+AUTH_COOKIE = {
+    "httponly": True,
+    "samesite": "lax",
+    "secure": os.environ.get("MI_COOKIE_SECURE", "") == "1",
+}
+
 
 def _secret():
     global _secret_cache
     if _secret_cache is None:
+        # On a server, MI_SECRET_KEY (a long random string) replaces the file,
+        # so every app process / redeploy signs sessions with the same key.
+        env_key = os.environ.get("MI_SECRET_KEY", "").strip()
+        if env_key:
+            if len(env_key) < 32:
+                raise RuntimeError("MI_SECRET_KEY must be at least 32 characters")
+            _secret_cache = env_key.encode()
+            return _secret_cache
         if not os.path.exists(SECRET_PATH):
             with open(SECRET_PATH, "wb") as f:
                 f.write(secrets.token_bytes(32))

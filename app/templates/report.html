@@ -132,24 +132,35 @@
     <div class="rp-feedback">
       <div class="rp-feedback-head">{{ R.teachers_view }}</div>
       <div class="no-print">
+        <label class="rp-summary-label" for="summary-text">{{ t('report.summary_en') }}</label>
         <textarea id="summary-text" class="rp-summary-ta" rows="5"
           placeholder="{{ t('report.summary_ph') }}">{{ summary.text if summary else '' }}</textarea>
+        <div class="rp-summary-label-row">
+          <label class="rp-summary-label" for="summary-text-zh">{{ t('report.summary_zh') }}</label>
+          <button type="button" class="btn btn-ghost btn-sm" id="summary-translate"
+                  data-label="{{ t('report.ai_translate') }}" data-busy="{{ t('report.ai_translating') }}"
+                  data-done="{{ t('report.ai_translate_done') }}" data-need="{{ t('report.summary_need_en') }}"
+                  data-notconf="{{ t('ai.not_configured') }}" data-billing="{{ t('ai.billing') }}"
+                  data-failed="{{ t('ai.failed') }}">{{ t('report.ai_translate') }}</button>
+        </div>
+        <textarea id="summary-text-zh" class="rp-summary-ta" rows="5" lang="zh"
+          placeholder="{{ t('report.summary_zh_ph') }}">{{ summary.text_zh if summary else '' }}</textarea>
         <div class="rp-summary-bar">
           <button type="button" class="btn btn-sm" id="summary-save">{{ t('report.summary_save') }}</button>
           <button type="button" class="btn btn-ghost btn-sm" id="summary-ai"
                   data-label="{{ t('report.ai_draft') }}" data-busy="{{ t('report.ai_drafting') }}"
                   data-done="{{ t('report.ai_done') }}" data-notconf="{{ t('ai.not_configured') }}"
-                  data-billing="{{ t('ai.billing') }}"
+                  data-billing="{{ t('ai.billing') }}" data-zhfailed="{{ t('report.ai_zh_failed') }}"
                   data-failed="{{ t('ai.failed') }}">{{ t('report.ai_draft') }}</button>
           <span class="by" id="summary-meta">
             {% if summary and summary.teacher_id %}{{ teacher_names.get(summary.teacher_id, '') }} · {{ summary.updated_at.strftime('%m-%d %H:%M') }}{% endif %}
           </span>
         </div>
-        {% if not (summary and summary.text) %}
-        <p class="muted small" style="margin-top:6px">{{ R.auto_note }}</p>
-        {% endif %}
+        <p class="muted small" style="margin-top:6px">{{ t('report.summary_fallback') }}</p>
       </div>
-      <div class="print-only rp-summary-print">{{ summary.text if summary and summary.text else analysis.overview }}</div>
+      {% set tv_text = ((summary.text_zh if rlang == 'zh' else summary.text) if summary else '') or '' %}
+      <div class="print-only rp-summary-print" data-rlang="{{ rlang }}"
+           data-auto="{{ analysis.overview }}">{{ tv_text if tv_text.strip() else analysis.overview }}</div>
     </div>
 
     {% if cohort_n > 1 %}

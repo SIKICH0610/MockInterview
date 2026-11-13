@@ -1,0 +1,213 @@
+{% extends "base.html" %}
+{% block title %}{{ t('email.title') }} · {{ s.label }}{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <div class="kicker"><a href="/admin/sessions/{{ s.id }}">{{ t('nav.admin') | upper }} · {{ s.label | upper }}</a></div>
+    <h1>{{ t('email.title') }} <span class="muted-h">{{ s.date }}</span></h1>
+  </div>
+  <div class="head-actions">
+    <a class="btn btn-ghost" href="/wb/review?session_id={{ s.id }}">{{ t('review.title') }}</a>
+  </div>
+</div>
+<p class="stage-hint">{{ t('email.hint') }}</p>
+{% if not configured %}<div class="flash flash-err">{{ t('email.not_configured') }} <a href="/admin/mailbox">{{ t('mailbox.title') }} →</a></div>{% endif %}
+
+<div class="card" id="email-form"
+     data-session="{{ s.id }}" data-configured="{{ 1 if configured else 0 }}"
+     data-msgs='{{ {
+        "confirm": t("email.confirm"), "sending": t("email.sending"), "done": t("email.done"),
+        "test_done": t("email.test_done"), "err_none": t("email.err_none"),
+        "err_test_to": t("email.err_test_to"), "err_lang": t("email.err_lang"),
+        "err_text": t("email.err_text"), "err_config": t("email.err_config"),
+        "sent": t("email.sent"), "failed": t("email.failed")
+     } | tojson | forceescape }}'>
+  <div class="mail-grid">
+    {% if from_addr %}<div class="mail-row"><span class="mail-label">{{ t('email.from') }}</span><span>{{ from_addr }}</span></div>{% endif %}
+    <label class="mail-row"><span class="mail-label">{{ t('email.subject') }}</span>
+      <input type="text" id="mail-subject" value="{{ t('email.default_subject') }}"></label>
+    <label class="mail-row mail-row-top"><span class="mail-label">{{ t('email.body') }}</span>
+      <span class="mail-field">
+        <textarea id="mail-body" rows="9">{{ t('email.default_body') }}</textarea>
+        <span class="muted small">{{ t('email.placeholders') }}</span>
+      </span></label>
+    <div class="mail-row"><span class="mail-label">{{ t('email.attach') }}</span>
+      <span class="mail-checks">
+        <label><input type="checkbox" class="mail-lang" value="en" checked> {{ t('email.attach_en') }}</label>
+        <label><input type="checkbox" class="mail-lang" value="zh" checked> {{ t('email.attach_zh') }}</label>
+      </span></div>
+    <label class="mail-row"><span class="mail-label">{{ t('email.bcc') }}</span>
+      <input type="text" id="mail-bcc" value="{{ default_bcc }}" placeholder="teacher@example.com"></label>
+    <div class="mail-row"><span class="mail-label">{{ t('email.test_to') }}</span>
+      <span class="mail-checks">
+        <input type="text" id="mail-test-to" placeholder="you@example.com">
+        <button type="button" class="btn btn-ghost" id="mail-test" {{ 'disabled' if not configured }}>{{ t('email.test_btn') }}</button>
+      </span></div>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-head" style="justify-content: space-between; flex-wrap: wrap;">
+    <span>{{ t('admin.students') }} <span class="muted">({{ students | length }})</span></span>
+    <span class="mail-checks">
+      <button type="button" class="btn btn-ghost btn-sm" id="mail-pick-ready">{{ t('email.select_ready') }}</button>
+      <button type="button" class="btn btn-ghost btn-sm" id="mail-pick-none">{{ t('email.select_none') }}</button>
+    </span>
+  </div>
+  <table class="table mail-table">
+    <tr>
+      <th></th><th>{{ t('label.name') }}</th><th>{{ t('th.parent_email') }}</th>
+      <th>{{ t('email.th_pdf') }}</th><th>{{ t('email.th_status') }}</th>
+    </tr>
+    {% for st in students %}
+    {% set p = pdfs.get(st.id, {}) %}
+    {% set em = emails[st.id] %}
+    {% set sent = last_sent.get(st.id) %}
+    {% set fail = last_fail.get(st.id) %}
+    <tr class="mail-student" data-student="{{ st.id }}"
+        data-has-en="{{ 1 if p.en }}" data-has-zh="{{ 1 if p.zh }}"
+        data-has-email="{{ 1 if em }}" data-sent="{{ 1 if sent }}">
+      <td><input type="checkbox" class="mail-pick" {{ 'disabled' if not em or not (p.en or p.zh) }}></td>
+      <td>
+        <a href="/report/{{ st.id }}">{{ st.name }}</a>
+        <span class="lv-badge lv-{{ st.level }}">{{ st.level }}</span>
+        <div class="small {{ 'muted' if st.id in reviewed else 'mail-warn' }}">{{ t('email.reviewed') if st.id in reviewed else t('email.not_reviewed') }}</div>
+      </td>
+      <td class="small">{% if em %}{{ em | join(', ') }}{% else %}<span class="mail-warn">{{ t('email.no_email') }}</span>{% endif %}</td>
+      <td class="small">
+        {% if p.en %}<a href="/report/pdf/{{ p.en.id }}" target="_blank">EN</a> <span class="muted">{{ p.en.created_at.strftime('%m-%d %H:%M') }}</span><br>{% endif %}
+        {% if p.zh %}<a href="/report/pdf/{{ p.zh.id }}" target="_blank">中文</a> <span class="muted">{{ p.zh.created_at.strftime('%m-%d %H:%M') }}</span>{% endif %}
+        {% if not p.en and not p.zh %}<span class="mail-warn">{{ t('email.no_pdf') }}</span>{% endif %}
+      </td>
+      <td class="small mail-status">
+        {% if sent %}
+          <span class="mail-ok">{{ t('email.sent') }} {{ sent.created_at.strftime('%m-%d %H:%M') }}</span>
+          <div class="muted" title="{{ sent.to_addr }}">→ {{ sent.to_addr }}</div>
+        {% endif %}
+        {% if fail %}
+          <div class="mail-warn">{{ t('email.failed') }} {{ fail.created_at.strftime('%m-%d %H:%M') }}: {{ fail.error[:120] }}</div>
+        {% endif %}
+        {% if not sent and not fail %}<span class="muted">{{ t('email.never') }}</span>{% endif %}
+      </td>
+    </tr>
+    {% endfor %}
+  </table>
+  <div class="mail-send-bar">
+    <button type="button" class="btn" id="mail-send" {{ 'disabled' if not configured }}>{{ t('email.send_btn') }} (<span id="mail-count">0</span>)</button>
+    <span id="mail-progress" class="muted"></span>
+  </div>
+</div>
+
+<script>
+(function () {
+  const box = document.getElementById("email-form");
+  const sid = box.dataset.session;
+  const M = JSON.parse(box.dataset.msgs);
+  const $ = (id) => document.getElementById(id);
+  const fmt = (s, o) => s.replace(/\{(\w+)\}/g, (m, k) => (k in o ? o[k] : m));
+  const KEY = "mi-mail-draft-" + sid;
+
+  try {
+    const d = JSON.parse(localStorage.getItem(KEY) || "null");
+    if (d) {
+      if (d.subject) $("mail-subject").value = d.subject;
+      if (d.body) $("mail-body").value = d.body;
+      if (typeof d.bcc === "string" && !$("mail-bcc").value) $("mail-bcc").value = d.bcc;
+      if (d.test_to) $("mail-test-to").value = d.test_to;
+    }
+  } catch (e) { /* storage unavailable */ }
+  function saveDraft() {
+    try {
+      localStorage.setItem(KEY, JSON.stringify({
+        subject: $("mail-subject").value, body: $("mail-body").value,
+        bcc: $("mail-bcc").value, test_to: $("mail-test-to").value,
+      }));
+    } catch (e) { /* storage unavailable */ }
+  }
+  ["mail-subject", "mail-body", "mail-bcc", "mail-test-to"].forEach((id) => $(id).addEventListener("input", saveDraft));
+
+  const rows = () => Array.from(document.querySelectorAll(".mail-student"));
+  const picked = () => rows().filter((r) => r.querySelector(".mail-pick").checked);
+  const langs = () => Array.from(document.querySelectorAll(".mail-lang:checked")).map((c) => c.value);
+  function ready(r) {
+    if (r.dataset.hasEmail !== "1") return false;
+    const L = langs();
+    return L.length > 0 && L.every((x) => r.dataset["has" + (x === "en" ? "En" : "Zh")] === "1");
+  }
+  function updateCount() { $("mail-count").textContent = picked().length; }
+  document.querySelectorAll(".mail-pick").forEach((c) => c.addEventListener("change", updateCount));
+  $("mail-pick-ready").addEventListener("click", () => {
+    rows().forEach((r) => {
+      const c = r.querySelector(".mail-pick");
+      c.checked = !c.disabled && ready(r) && r.dataset.sent !== "1";
+    });
+    updateCount();
+  });
+  $("mail-pick-none").addEventListener("click", () => {
+    rows().forEach((r) => (r.querySelector(".mail-pick").checked = false));
+    updateCount();
+  });
+
+  function check() {
+    if (!$("mail-subject").value.trim() || !$("mail-body").value.trim()) { alert(M.err_text); return false; }
+    if (!langs().length) { alert(M.err_lang); return false; }
+    return true;
+  }
+  async function sendOne(r, testTo) {
+    const res = await fetch(`/admin/sessions/${sid}/email/send`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        student_id: parseInt(r.dataset.student, 10),
+        subject: $("mail-subject").value, body: $("mail-body").value,
+        langs: langs(), bcc: $("mail-bcc").value, test_to: testTo || "",
+      }),
+    });
+    let j = {};
+    try { j = await res.json(); } catch (e) { j = { ok: false, error: "HTTP " + res.status }; }
+    return j;
+  }
+  function showStatus(r, j) {
+    const cell = r.querySelector(".mail-status");
+    cell.innerHTML = "";
+    const s = document.createElement("span");
+    s.className = j.ok ? "mail-ok" : "mail-warn";
+    s.textContent = j.ok ? `${M.sent} ${j.time} → ${j.to}` : `${M.failed}: ${j.error}`;
+    cell.appendChild(s);
+    if (j.ok) { r.dataset.sent = "1"; r.querySelector(".mail-pick").checked = false; }
+  }
+
+  $("mail-test").addEventListener("click", async () => {
+    const to = $("mail-test-to").value.trim();
+    if (!to) { alert(M.err_test_to); return; }
+    const r = picked()[0];
+    if (!r) { alert(M.err_none); return; }
+    if (!check()) return;
+    $("mail-test").disabled = true;
+    $("mail-progress").textContent = M.sending;
+    const j = await sendOne(r, to);
+    $("mail-progress").textContent = j.ok ? fmt(M.test_done, { to: j.to }) : j.error;
+    $("mail-test").disabled = false;
+  });
+
+  $("mail-send").addEventListener("click", async () => {
+    const list = picked();
+    if (!list.length) { alert(M.err_none); return; }
+    if (!check()) return;
+    if (!confirm(fmt(M.confirm, { n: list.length }))) return;
+    $("mail-send").disabled = true;
+    let ok = 0, fail = 0;
+    for (let i = 0; i < list.length; i++) {
+      $("mail-progress").textContent = `${M.sending} ${i + 1}/${list.length}`;
+      const j = await sendOne(list[i]);
+      j.ok ? ok++ : fail++;
+      showStatus(list[i], j);
+    }
+    $("mail-progress").textContent = fmt(M.done, { ok, fail });
+    $("mail-send").disabled = false;
+    updateCount();
+  });
+  updateCount();
+})();
+</script>
+{% endblock %}

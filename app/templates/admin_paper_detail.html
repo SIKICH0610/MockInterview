@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_macros.html" import media_block, media_editor %}
 {% block title %}{{ p.name }} · {{ t('papers.title') }}{% endblock %}
 {% block content %}
 <div class="page-head">
@@ -9,67 +10,154 @@
 </div>
 {% if msg %}<div class="flash">{{ msg }}</div>{% endif %}
 
-{% for version, qs in by_version.items() %}
+{% if locked %}<div class="flash flash-err">{{ t('papers.locked') }}</div>
+{% else %}<p class="stage-hint">{{ t('papers.builder_hint') }}</p>{% endif %}
+
+{% for lv, doms in sections.items() %}
 <div class="card">
-  <div class="card-head"><span class="lv-badge lv-{{ version }}">{{ version }}</span> {{ qs | length }} {{ t('papers.count') | lower }}</div>
-  <table class="table">
-    <tr><th>#</th><th>{{ t('q.title') }}</th><th>{{ t('q.ability') }}</th><th>{{ t('macro.expression') }}</th><th></th></tr>
-    {% for q in qs %}
-    <tr>
-      <td><b class="qcode">{{ q.code }}</b></td>
-      <td>{{ q.title }}<div class="muted small">{{ q.prompt | truncate(80) }}</div></td>
-      <td class="muted small">{{ q.domain }} · {{ q.ability }}</td>
-      <td class="muted small">{{ '✓' if q.has_expression }}{{ (' /' ~ q.trial_max) if q.trial_max }}</td>
-      <td class="t-actions"><a class="btn btn-ghost btn-sm" href="/admin/questions/{{ q.id }}/edit">{{ t('q.edit') }}</a></td>
-    </tr>
-    {% endfor %}
-  </table>
+  <div class="card-head"><span class="lv-badge lv-{{ lv }}">{{ lv }}</span> {{ t('papers.individual') }}
+    <span class="muted small">{{ doms.values() | map('length') | sum }} {{ t('papers.count') | lower }}</span></div>
+  {% for dom, qs in doms.items() %}
+  <div class="pb-domain">
+    <div class="rubric-head">{{ t('domain.' ~ dom) }}</div>
+    {% if qs %}
+    <table class="table pb-table">
+      {% for q in qs %}
+      <tr>
+        <td class="pb-code"><b class="qcode">{{ q.code }}</b></td>
+        <td>
+          {{ q.title }}{% if q.media %} <span class="bank-media-n">▣ {{ q.media | length }}</span>{% endif %}
+          <div class="muted small">{{ q.prompt | truncate(90) }}</div>
+        </td>
+        <td class="small muted pb-ab">{{ q.ability }}</td>
+        <td class="small pb-type">{% if q.qtype == 'count' %}{{ t('qtype.count_n').format(n=q.trial_max) }}{% else %}{{ t('qtype.' ~ (q.qtype or 'single')) }}{% endif %}</td>
+        <td class="t-actions pb-actions">
+          <a class="btn btn-ghost btn-sm" href="/admin/questions/{{ q.id }}/edit">{{ t('q.edit') }}</a>
+          {% if not locked %}
+          <form method="post" action="/admin/questions/{{ q.id }}/move" class="inline">
+            <input type="hidden" name="step" value="-1">
+            <button class="btn btn-ghost btn-sm btn-icon" type="submit" title="{{ t('papers.up') }}" aria-label="{{ t('papers.up') }}" {{ 'disabled' if loop.first }}>↑</button>
+          </form>
+          <form method="post" action="/admin/questions/{{ q.id }}/move" class="inline">
+            <input type="hidden" name="step" value="1">
+            <button class="btn btn-ghost btn-sm btn-icon" type="submit" title="{{ t('papers.down') }}" aria-label="{{ t('papers.down') }}" {{ 'disabled' if loop.last }}>↓</button>
+          </form>
+          <form method="post" action="/admin/questions/{{ q.id }}/delete" class="inline"
+                onsubmit="return confirm({{ t('papers.remove_confirm') | tojson }})">
+            <button class="btn btn-danger btn-sm" type="submit">{{ t('btn.remove') }}</button>
+          </form>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </table>
+    {% else %}
+    <p class="muted small">{{ t('papers.no_questions') }}</p>
+    {% endif %}
+    {% if not locked %}
+    <details class="pb-add">
+      <summary class="btn btn-ghost btn-sm" aria-label="{{ t('papers.add') }}">＋ {{ t('papers.add') }}</summary>
+      <div class="pb-add-menu">
+        <a class="btn btn-sm" href="/admin/papers/{{ p.id }}/new?version={{ lv }}&domain={{ dom | urlencode }}">{{ t('papers.add_new') }}</a>
+        <a class="btn btn-ghost btn-sm" href="/admin/bank?pick={{ p.id }}&version={{ lv }}&level={{ lv }}&domain={{ dom | urlencode }}">{{ t('papers.add_cite') }}</a>
+        <a class="btn btn-ghost btn-sm" href="/admin/pdfs?new={{ ('paper:' ~ p.id ~ ':' ~ lv ~ ':' ~ dom) | urlencode }}">{{ t('papers.add_pdf') }}</a>
+      </div>
+    </details>
+    {% endif %}
+  </div>
+  {% endfor %}
 </div>
 {% endfor %}
 
 <div class="card">
-  <div class="card-head"><span class="sec-num">GA</span> {{ t('papers.stage_section') }}</div>
-  <p class="muted small">{{ t('papers.dims_note') }}</p>
+  <div class="card-head"><span class="sec-num">TEAM</span> {{ t('papers.team') }}</div>
+  <p class="muted small">{{ t('papers.team_hint') }}</p>
+  {% for st in obs_stages %}
+  {% set mat = materials.get(st) %}
+  <div class="dimedit-block pb-stage">
+    <div class="pb-stage-head">{{ t('stage.' ~ st) }} <span class="muted small">· {{ st }}</span>
+      {% if mat and mat.activity_id %}<span class="bank-tag">{{ t('papers.from_bank') }}</span>{% endif %}</div>
 
-  <div class="dimedit-block">
-    <div class="rubric-head">{{ t('papers.prompts_head') }}</div>
-    <form method="post" action="/admin/papers/{{ p.id }}/prompts">
-      <textarea name="text" rows="{{ [prompts | length + 1, 9] | min }}" class="dimedit-ta">{{ prompts | join('\n') }}</textarea>
+    <div class="rubric-head">{{ t('papers.stem_head') }}</div>
+    <div class="pb-stage-actions">
+      <a class="btn btn-sm" href="/admin/teambank?pick={{ p.id }}&stage={{ st | urlencode }}">＋ {{ t('papers.stage_cite_bank') }}</a>
+      <a class="btn btn-ghost btn-sm" href="/admin/pdfs?target={{ ('stage:' ~ p.id ~ ':' ~ st) | urlencode }}">{{ t('pdf.cut_from_pdf') }}</a>
+      {% if mat and (mat.title or mat.text) %}
+      <form method="post" action="/admin/papers/{{ p.id }}/stage_to_bank" class="inline">
+        <input type="hidden" name="stage" value="{{ st }}">
+        <button class="btn btn-ghost btn-sm" type="submit">{{ t('papers.stage_to_bank') }}</button>
+      </form>
+      {% endif %}
+    </div>
+    <form method="post" action="/admin/papers/{{ p.id }}/stage_material" enctype="multipart/form-data" class="q-form">
+      <input type="hidden" name="stage" value="{{ st }}">
+      <label class="q-full">{{ t('papers.stem_title') }}
+        <input type="text" name="title" value="{{ mat.title if mat else '' }}" maxlength="160"></label>
+      <label class="q-full">{{ t('papers.material') }}
+        <textarea name="text" rows="3" placeholder="{{ t('papers.material_ph') }}">{{ mat.text if mat else '' }}</textarea></label>
+      <label class="q-full">{{ t('papers.material_files') }}
+        <input type="file" name="files" multiple accept=".pdf,image/png,image/jpeg,image/gif,image/webp"></label>
       <div class="dimedit-bar"><button class="btn btn-sm" type="submit">{{ t('btn.save') }}</button></div>
     </form>
-  </div>
+    {% if stage_media.get(st) %}
+    {{ media_editor(stage_media[st], '/admin/papers/' ~ p.id) }}
+    {% endif %}
 
-  {% for stage, dlist in dims.items() %}
-  <div class="dimedit-block">
-    <div class="rubric-head">{{ t('stage.' ~ stage) }} <span class="muted small">· {{ stage }}</span></div>
-    <form method="post" action="/admin/papers/{{ p.id }}/dims">
-      <input type="hidden" name="stage" value="{{ stage }}">
-      {% for d in dlist %}
-      <div class="dimedit-row">
-        <input type="hidden" name="key" value="{{ d.key }}">
-        <div class="dimedit-labels">
-          <label>{{ t('papers.dim_label') }}<input type="text" name="label" value="{{ d.label }}"></label>
-          <label>{{ t('papers.dim_label_zh') }}<input type="text" name="label_zh" value="{{ d.label_zh }}"></label>
-          <label class="dimedit-del"><input type="checkbox" name="del_{{ d.key }}" value="1"> {{ t('papers.dim_delete') }}</label>
-        </div>
-        <label class="dimedit-opts">{{ t('papers.dim_options') }}
-          <textarea name="options" rows="{{ d.options | length }}">{% for en, zh in d.options %}{{ en }}{% if zh %} | {{ zh }}{% endif %}
+    {% if st == 'Story Time' %}
+    <details class="pb-more">
+      <summary>{{ t('papers.prompts_head') }} <span class="muted small">({{ prompts | length }})</span></summary>
+      <form method="post" action="/admin/papers/{{ p.id }}/prompts">
+        <textarea name="text" rows="{{ [prompts | length + 1, 9] | min }}" class="dimedit-ta">{{ prompts | join('\n') }}</textarea>
+        <div class="dimedit-bar"><button class="btn btn-sm" type="submit">{{ t('btn.save') }}</button></div>
+      </form>
+    </details>
+    {% endif %}
+
+    {% if dims.get(st) %}
+    <details class="pb-more">
+      <summary>{{ t('papers.dims_head') }} <span class="muted small">({{ dims[st] | length }})</span></summary>
+      <p class="muted small">{{ t('papers.dims_note') }}</p>
+      <form method="post" action="/admin/papers/{{ p.id }}/dims">
+        <input type="hidden" name="stage" value="{{ st }}">
+        {% for d in dims[st] %}
+        <div class="dimedit-row">
+          <input type="hidden" name="key" value="{{ d.key }}">
+          <div class="dimedit-labels">
+            <label>{{ t('papers.dim_label') }}<input type="text" name="label" value="{{ d.label }}"></label>
+            <label>{{ t('papers.dim_label_zh') }}<input type="text" name="label_zh" value="{{ d.label_zh }}"></label>
+            <label class="dimedit-del"><input type="checkbox" name="del_{{ d.key }}" value="1"> {{ t('papers.dim_delete') }}</label>
+          </div>
+          <label class="dimedit-opts">{{ t('papers.dim_options') }}
+            <textarea name="options" rows="{{ d.options | length }}">{% for en, zh in d.options %}{{ en }}{% if zh %} | {{ zh }}{% endif %}
 {% endfor %}</textarea>
-        </label>
-      </div>
-      {% endfor %}
-      <div class="dimedit-row dimedit-new">
-        <div class="dimedit-labels">
-          <span class="dimedit-new-tag">{{ t('papers.dim_new') }}</span>
-          <label>{{ t('papers.dim_label') }}<input type="text" name="new_label" value=""></label>
-          <label>{{ t('papers.dim_label_zh') }}<input type="text" name="new_label_zh" value=""></label>
+          </label>
         </div>
-        <label class="dimedit-opts">{{ t('papers.dim_options') }}
-          <textarea name="new_options" rows="3" placeholder="Good | 良好&#10;Fair | 一般&#10;Limited | 有限"></textarea>
-        </label>
-      </div>
-      <div class="dimedit-bar"><button class="btn btn-sm" type="submit">{{ t('btn.save') }}</button></div>
+        {% endfor %}
+        <div class="dimedit-row dimedit-new">
+          <div class="dimedit-labels">
+            <span class="dimedit-new-tag">{{ t('papers.dim_new') }}</span>
+            <label>{{ t('papers.dim_label') }}<input type="text" name="new_label" value=""></label>
+            <label>{{ t('papers.dim_label_zh') }}<input type="text" name="new_label_zh" value=""></label>
+          </div>
+          <label class="dimedit-opts">{{ t('papers.dim_options') }}
+            <textarea name="new_options" rows="3" placeholder="Good | 良好&#10;Fair | 一般&#10;Limited | 有限"></textarea>
+          </label>
+        </div>
+        <div class="dimedit-bar"><button class="btn btn-sm" type="submit">{{ t('btn.save') }}</button></div>
+      </form>
+    </details>
+    {% endif %}
+
+    {% if other_papers %}
+    <form method="post" action="/admin/papers/{{ p.id }}/stage_copy" class="inline-form pb-stage-copy"
+          onsubmit="return confirm({{ t('papers.stage_copy_confirm') | tojson }})">
+      <input type="hidden" name="stage" value="{{ st }}">
+      <label>{{ t('papers.stage_copy_from') }}
+        <select name="from_pid">{% for op in other_papers %}<option value="{{ op.id }}">{{ op.name }}</option>{% endfor %}</select>
+      </label>
+      <button class="btn btn-ghost btn-sm" type="submit">{{ t('papers.stage_copy') }}</button>
     </form>
+    {% endif %}
   </div>
   {% endfor %}
 </div>

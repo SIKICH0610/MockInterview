@@ -1,0 +1,107 @@
+{% extends "base.html" %}
+{% block title %}{{ t('mailbox.title') }} · {{ t('nav.admin') }}{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <div class="kicker"><a href="/admin/sessions">{{ t('nav.admin') | upper }}</a></div>
+    <h1>{{ t('mailbox.title') }}</h1>
+  </div>
+</div>
+<p class="stage-hint">{{ t('mailbox.hint') }}</p>
+{% if msg %}<div class="flash">{{ msg }}</div>{% endif %}
+
+{% if not m.configured %}
+<div class="flash flash-err">{{ t('mailbox.not_setup') }}</div>
+{% else %}
+
+<div class="card">
+  <div class="mb-status">
+    {% if m.connected %}
+      <div class="mb-state mail-ok">{{ t('mailbox.connected').format(addr=m.from_addr) }}</div>
+      {% if m.sender %}<div class="muted small">{{ t('mailbox.signed_in_as').format(acct=m.account) }}</div>{% endif %}
+      {% if m.connected_at %}<div class="muted small">{{ t('mailbox.connected_meta').format(by=m.connected_by or '—', when=m.connected_at.strftime('%Y-%m-%d %H:%M')) }}</div>{% endif %}
+    {% else %}
+      <div class="mb-state mail-warn">{{ t('mailbox.not_connected') }}</div>
+    {% endif %}
+    {% if m.last_error %}<div class="mail-warn small">{{ t('mailbox.last_error') }}: {{ m.last_error[:300] }}</div>{% endif %}
+  </div>
+
+  {% if m.connected %}
+  <div class="mb-actions">
+    <form method="post" action="/admin/mailbox/test" class="mail-checks">
+      <label class="mail-checks">{{ t('mailbox.test_to') }}
+        <input type="text" name="to" required placeholder="you@example.com"></label>
+      <button class="btn btn-ghost" type="submit">{{ t('mailbox.test_btn') }}</button>
+    </form>
+    <form method="post" action="/admin/mailbox/disconnect" onsubmit="return confirm('{{ t('mailbox.confirm_disconnect') }}')">
+      <button class="btn btn-danger btn-sm" type="submit">{{ t('mailbox.disconnect') }}</button>
+    </form>
+  </div>
+  {% endif %}
+</div>
+
+<div class="card" id="mb-connect"
+     data-msgs='{{ {"waiting": t("mailbox.waiting"), "expired": t("mailbox.expired"),
+                   "declined": t("mailbox.declined"), "done": t("mailbox.done")} | tojson | forceescape }}'>
+  <div class="card-head">{{ t('mailbox.reconnect') if m.connected else t('mailbox.connect') }}</div>
+  <div class="mail-grid">
+    <label class="mail-row mail-row-top"><span class="mail-label">{{ t('mailbox.sender') }}</span>
+      <span class="mail-field">
+        <input type="text" id="mb-sender" value="{{ m.sender }}" placeholder="info@example.com">
+        <span class="muted small">{{ t('mailbox.sender_hint') }}</span>
+      </span></label>
+    <div><button type="button" class="btn" id="mb-start">{{ t('mailbox.connect') }}</button></div>
+  </div>
+  <div id="mb-code" class="mb-code" hidden>
+    <div>{{ t('mailbox.step_open') }} <a id="mb-link" href="https://microsoft.com/devicelogin" target="_blank" rel="noopener">microsoft.com/devicelogin</a></div>
+    <div>{{ t('mailbox.step_code') }}</div>
+    <div class="mb-codebox"><span id="mb-user-code"></span>
+      <button type="button" class="btn btn-ghost btn-sm" id="mb-copy">{{ t('mailbox.copy') }}</button></div>
+    <div>{{ t('mailbox.step_accept') }}</div>
+    <div id="mb-progress" class="muted small"></div>
+  </div>
+</div>
+
+<script>
+(function () {
+  const box = document.getElementById("mb-connect");
+  const M = JSON.parse(box.dataset.msgs);
+  const $ = (id) => document.getElementById(id);
+  let timer = null, interval = 5000;
+
+  async function post(url, body) {
+    const r = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body || {}) });
+    try { return await r.json(); } catch (e) { return { ok: false, error: "HTTP " + r.status }; }
+  }
+  async function poll() {
+    const j = await post("/admin/mailbox/poll");
+    if (j.state === "ok") { $("mb-progress").textContent = M.done; setTimeout(() => location.reload(), 800); return; }
+    if (j.state === "pending" || j.state === "slow_down") {
+      if (j.state === "slow_down") interval += 5000;
+      timer = setTimeout(poll, interval); return;
+    }
+    $("mb-start").disabled = false;
+    $("mb-progress").textContent = j.state === "expired" ? M.expired
+      : j.state === "declined" ? M.declined + (j.error ? ": " + j.error : "")
+      : (j.error || j.state);
+  }
+  $("mb-start").addEventListener("click", async () => {
+    clearTimeout(timer);
+    $("mb-start").disabled = true;
+    const j = await post("/admin/mailbox/start", { sender: $("mb-sender").value.trim() });
+    if (!j.ok) { $("mb-start").disabled = false; alert(j.error || "error"); return; }
+    $("mb-user-code").textContent = j.user_code;
+    $("mb-link").href = j.verification_uri;
+    $("mb-link").textContent = j.verification_uri.replace(/^https?:\/\//, "");
+    $("mb-code").hidden = false;
+    $("mb-progress").textContent = M.waiting;
+    interval = (j.interval || 5) * 1000;
+    timer = setTimeout(poll, interval);
+  });
+  $("mb-copy").addEventListener("click", () => {
+    try { navigator.clipboard.writeText($("mb-user-code").textContent); } catch (e) { /* ignore */ }
+  });
+})();
+</script>
+{% endif %}
+{% endblock %}

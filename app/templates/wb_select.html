@@ -11,7 +11,7 @@
   <form class="select-form" method="get" action="/wb/stage">
     <label>{{ t('label.session') }}
       <select name="session_id" required>
-        {% for se in sessions %}<option value="{{ se.id }}">{{ se.date }} · {{ se.label }}</option>{% endfor %}
+        {% for se in sessions %}<option value="{{ se.id }}" {{ 'selected' if se.id == selected }}>{{ se.date }} · {{ se.label }}</option>{% endfor %}
       </select>
     </label>
     <div class="select-actions sa-3">

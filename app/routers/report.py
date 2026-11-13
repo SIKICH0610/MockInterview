@@ -247,6 +247,17 @@ def _can_view(teacher, st):
     return bool(st.group and st.group.teacher_id == teacher.id)
 
 
+def _rating_level(value, options):
+    """' (middle of 3)' etc. — options are ordered best -> weakest. Tells the AI
+    how strong a rating word is, so it neither upgrades nor downgrades it."""
+    names = [o[0] for o in options]
+    if value not in names or len(names) < 2:
+        return ""
+    i, n = names.index(value), len(names)
+    pos = "top" if i == 0 else ("lowest" if i == n - 1 else "middle")
+    return f" ({pos} of {n})"
+
+
 def collect_report_facts(db, st):
     """Plain-text fact sheet about one child, for the AI comment draft.
     Only states what was recorded; marks Not observed explicitly."""
@@ -290,6 +301,7 @@ def collect_report_facts(db, st):
     for stage, dims in paper_dims(db, paper_id).items():
         vals = [
             f"{d['label']}: {dim_raw[(stage, d['key'])]}"
+            + _rating_level(dim_raw[(stage, d["key"])], d["options"])
             for d in dims
             if (stage, d["key"]) in dim_raw
         ]
@@ -520,7 +532,11 @@ def report_page(stid: int, request: Request, db: Session = Depends(get_db)):
 
     # --- 7 abilities for the radar + table ---
     abilities = []
-    for name in ABILITY_ORDER:
+    # the 7 standard abilities, then any new core-content labels used by this interview
+    radar_order = list(ABILITY_ORDER) + [
+        a for a in dict.fromkeys(x.ability for x in math_qs) if a and a not in ABILITY_ORDER
+    ]
+    for name in radar_order:
         if name == "Expression":
             pct = (expr_sum / expr_max) if expr_max and expr_obs else (0 if expr_max else None)
             abilities.append(
@@ -536,20 +552,22 @@ def report_page(stid: int, request: Request, db: Session = Depends(get_db)):
                 }
             )
             continue
-        q = next((x for x in math_qs if x.ability == name), None)
-        if q is None:
+        qs_a = [x for x in math_qs if x.ability == name]
+        if not qs_a:
             continue
-        r = recs.get(q.code)
-        observed = _scored(r) and r.academic is not None
+        vals = [recs[x.code].academic for x in qs_a
+                if _scored(recs.get(x.code)) and recs[x.code].academic is not None]
+        observed = bool(vals)
+        avgs = [v for v in (_ability_avg(x.code) for x in qs_a) if v is not None]
         abilities.append(
             {
                 "name": name,
                 "disp": ability_name(rlang, name),
-                "score": r.academic if observed else None,
-                "max": 2,
-                "pct": (r.academic / 2) if observed else None,
-                "avg_pct": _ability_avg(q.code),
-                "evidence": f"{q.code} · {q.title}",
+                "score": sum(vals) if observed else None,
+                "max": 2 * len(vals) if observed else 2 * len(qs_a),
+                "pct": (sum(vals) / (2 * len(vals))) if observed else None,
+                "avg_pct": (sum(avgs) / len(avgs)) if avgs else None,
+                "evidence": " · ".join(f"{x.code} · {x.title}" for x in qs_a),
                 "observed": observed,
             }
         )

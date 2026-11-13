@@ -1,6 +1,17 @@
-fastapi
-uvicorn[standard]
-sqlalchemy
-jinja2
-python-multipart
-openpyxl
+# Exact versions tested together (Python 3.11+). Upgrade deliberately, then retest.
+fastapi==0.162.4
+uvicorn[standard]==0.54.0
+sqlalchemy==2.1.8
+jinja2==3.1.6
+python-multipart==0.0.33
+openpyxl==3.1.5
+openai==3.49.0
+# PostgreSQL driver (MI_DATABASE_URL=postgresql+psycopg://...)
+psycopg[binary]==3.3.8
+# Encrypts the stored Microsoft sign-in tokens for report emails
+cryptography==50.0.2
+# Question PDFs: render pages, cut pictures, read text (question bank)
+pypdfium2==5.15.2
+pillow==13.0.0
+# Server-side PDF rendering; after install also run: python -m playwright install --with-deps chromium
+playwright==1.65.0

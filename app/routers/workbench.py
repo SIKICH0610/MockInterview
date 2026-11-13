@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, Request
-from fastapi.responses import RedirectResponse
+from fastapi.responses import RedirectResponse, Response
 from sqlalchemy.orm import Session
 
 from ..db import get_db
@@ -10,8 +10,10 @@ from ..models import (
     ItemRecord,
     Paper,
     Question,
+    QuestionMedia,
     Review,
     SessionArchive,
+    StageMaterial,
     StageObs,
     Student,
     Teacher,
@@ -63,7 +65,7 @@ def _grouping_ready(db, s):
 def _gate_redirect(session_id, teacher):
     if teacher and teacher.role == "admin":
         return RedirectResponse(f"/admin/sessions/{session_id}/grouping?msg=gate", status_code=303)
-    return RedirectResponse("/wb?msg=gate", status_code=303)
+    return RedirectResponse(f"/wb?msg=gate&session_id={session_id}", status_code=303)
 
 
 def _records_map(db, student_ids):
@@ -75,12 +77,12 @@ def _records_map(db, student_ids):
 
 
 @router.get("")
-def select_page(request: Request, msg: str = "", db: Session = Depends(get_db)):
+def select_page(request: Request, msg: str = "", session_id: int = 0, db: Session = Depends(get_db)):
     sessions = db.query(AssessSession).order_by(AssessSession.date.desc()).all()
     return templates.TemplateResponse(
         request,
         "wb_select.html",
-        {"sessions": sessions, "teacher": request.state.teacher, "msg": msg, "active": "wb"},
+        {"sessions": sessions, "selected": session_id, "teacher": request.state.teacher, "msg": msg, "active": "wb"},
     )
 
 
@@ -159,8 +161,31 @@ def stage_mode(
             "dimvals": dimvals,
             "stage_dims": paper_dims(db, pid).get(stage, []),
             "prompts": paper_prompts(db, pid),
+            "material": db.query(StageMaterial).filter_by(paper_id=pid, stage=stage).first(),
+            "stage_media": db.query(QuestionMedia)
+            .filter_by(paper_id=pid, stage=stage)
+            .order_by(QuestionMedia.sort, QuestionMedia.id)
+            .all(),
             "teacher_names": teacher_names,
             "active": "wb",
+        },
+    )
+
+
+@router.get("/media/{mid}")
+def media_file(mid: int, db: Session = Depends(get_db)):
+    """A question picture / PDF, for any signed-in teacher (shown on scoring pages)."""
+    m = db.get(QuestionMedia, mid)
+    if not m:
+        return Response(status_code=404)
+    safe = "".join(c for c in m.filename if c.isascii() and (c.isalnum() or c in "._- ")) or "file"
+    return Response(
+        content=m.data,
+        media_type=m.mime,
+        headers={
+            "Content-Disposition": f'inline; filename="{safe}"',
+            "Cache-Control": "private, max-age=86400",
+            "X-Content-Type-Options": "nosniff",
         },
     )
 
@@ -223,14 +248,23 @@ def review_mode(request: Request, session_id: int, db: Session = Depends(get_db)
     sep = {}
     ct_counts = {}
     obs_counts = {}
+    obs_stage = {}
+    stage_counts = {}  # (student, stage) -> records, one review column per team activity
     if ids:
         for o in db.query(StageObs).filter(StageObs.student_id.in_(ids)).all():
+            stage_counts[(o.student_id, o.stage)] = stage_counts.get((o.student_id, o.stage), 0) + 1
             if o.stage == "Separation":
                 sep[o.student_id] = o
             elif o.stage == "Story Time":
                 ct_counts[o.student_id] = ct_counts.get(o.student_id, 0) + 1
             else:
                 obs_counts[o.student_id] = obs_counts.get(o.student_id, 0) + 1
+                # "Stages" column links to the first other stage with records
+                prev = obs_stage.get(o.student_id)
+                if o.stage in OBS_STAGES and (
+                    prev is None or OBS_STAGES.index(o.stage) < OBS_STAGES.index(prev)
+                ):
+                    obs_stage[o.student_id] = o.stage
 
     ev_counts = {}
     if ids:
@@ -286,7 +320,9 @@ def review_mode(request: Request, session_id: int, db: Session = Depends(get_db)
             "records": records,
             "sep": sep,
             "ct_counts": ct_counts,
+            "stage_counts": stage_counts,
             "obs_counts": obs_counts,
+            "obs_stage": obs_stage,
             "ev_counts": ev_counts,
             "reviews": reviews,
             "progress": progress,

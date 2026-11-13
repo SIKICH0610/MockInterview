@@ -1,0 +1,103 @@
+{% extends "base.html" %}
+{% from "_macros.html" import bank_tabs %}
+{% block title %}{{ t('bank.title') }}{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <div class="kicker"><a href="/admin/sessions">{{ t('nav.admin') | upper }}</a></div>
+    <h1>{{ t('bank.title') }} <span class="muted-h">{{ items | length }}</span></h1>
+  </div>
+  <div class="head-actions">
+    {% if pick_paper %}
+    <a class="btn btn-ghost" href="/admin/papers/{{ pick_paper.id }}">{{ t('bank.back_to_paper') }}</a>
+    {% else %}
+    <a class="btn btn-ghost" href="/admin/papers">{{ t('papers.title') }}</a>
+    <a class="btn btn-ghost" href="/admin/pdfs?new=bank">{{ t('pdf.from_pdf_new') }}</a>
+    <a class="btn" href="/admin/bank/new">+ {{ t('bank.new_q') }}</a>
+    {% endif %}
+  </div>
+</div>
+{{ bank_tabs('individual', pick_paper) }}
+{% if msg %}<div class="flash">{{ msg }}</div>{% endif %}
+{% if pick_paper %}
+<div class="flash">{{ t('bank.picking').format(paper=pick_paper.name, lv=pick_version) }}</div>
+{% else %}
+<p class="stage-hint">{{ t('bank.hint') }}</p>
+{% endif %}
+
+<form method="get" action="/admin/bank" class="card bank-filter">
+  {% if pick_paper %}<input type="hidden" name="pick" value="{{ pick_paper.id }}"><input type="hidden" name="version" value="{{ pick_version }}">{% endif %}
+  <label>{{ t('q.domain') }}
+    <select name="domain">
+      <option value="">{{ t('bank.all') }}</option>
+      {% for d in domains %}<option value="{{ d }}" {{ 'selected' if f.domain == d }}>{{ t('domain.' ~ d) }}</option>{% endfor %}
+    </select>
+  </label>
+  <label>{{ t('label.level') }}
+    <select name="level">
+      <option value="">{{ t('bank.all') }}</option>
+      {% for lv in levels %}<option value="{{ lv }}" {{ 'selected' if f.level == lv }}>{{ lv }}</option>{% endfor %}
+    </select>
+  </label>
+  <label>{{ t('bank.type') }}
+    <select name="qtype">
+      <option value="">{{ t('bank.all') }}</option>
+      {% for x in qtypes %}<option value="{{ x }}" {{ 'selected' if f.qtype == x }}>{{ t('qtype.' ~ x) }}</option>{% endfor %}
+    </select>
+  </label>
+  <label>{{ t('bank.ability') }}
+    <select name="ability">
+      <option value="">{{ t('bank.all') }}</option>
+      {% for d, abs in abilities.items() %}
+      <optgroup label="{{ t('domain.' ~ d) }}">
+        {% for a in abs %}<option value="{{ a }}" {{ 'selected' if f.ability == a }}>{{ a }}</option>{% endfor %}
+      </optgroup>
+      {% endfor %}
+    </select>
+  </label>
+  <label class="bank-q">{{ t('bank.search') }} <input type="search" name="q" value="{{ f.q }}" placeholder="{{ t('bank.search_ph') }}"></label>
+  <div class="bank-filter-btns">
+    <button class="btn" type="submit">{{ t('bank.filter') }}</button>
+    <a class="btn btn-ghost" href="/admin/bank{% if pick_paper %}?pick={{ pick_paper.id }}&version={{ pick_version }}{% endif %}">{{ t('bank.reset') }}</a>
+  </div>
+</form>
+
+<div class="card">
+  {% if items %}
+  <table class="table bank-table">
+    <tr>
+      <th>{{ t('q.title') }}</th><th>{{ t('bank.ability') }}</th><th>{{ t('bank.type') }}</th>
+      <th>{{ t('label.level') }}</th><th>{{ t('bank.used') }}</th><th></th>
+    </tr>
+    {% for b in items %}
+    <tr>
+      <td>
+        <b>{{ b.title }}</b>
+        {% if media_n.get(b.id) %}<span class="bank-media-n" title="{{ t('bank.media_head') }}">▣ {{ media_n[b.id] }}</span>{% endif %}
+        <div class="muted small">{{ b.prompt | truncate(110) }}</div>
+        {% if b.tags %}<div class="bank-tags">{% for tg in b.tags.split(',') if tg.strip() %}<span class="bank-tag">{{ tg.strip() }}</span>{% endfor %}</div>{% endif %}
+      </td>
+      <td class="small">{{ t('domain.' ~ b.domain) }} · {{ b.ability }}</td>
+      <td class="small">{% if b.qtype == 'count' %}{{ t('qtype.count_n').format(n=b.trial_max) }}{% else %}{{ t('qtype.' ~ b.qtype) }}{% endif %}</td>
+      <td>{% if b.level %}<span class="lv-badge lv-{{ b.level }}">{{ b.level }}</span>{% else %}<span class="muted small">TK + K</span>{% endif %}</td>
+      <td class="small muted">{{ used.get(b.id, 0) }}</td>
+      <td class="t-actions">
+        {% if pick_paper %}
+        <form method="post" action="/admin/papers/{{ pick_paper.id }}/cite" class="inline">
+          <input type="hidden" name="bank_id" value="{{ b.id }}">
+          <input type="hidden" name="version" value="{{ pick_version }}">
+          <button class="btn btn-sm" type="submit">{{ t('bank.cite') }}</button>
+        </form>
+        <a class="btn btn-ghost btn-sm" href="/admin/bank/{{ b.id }}" target="_blank">{{ t('bank.view') }}</a>
+        {% else %}
+        <a class="btn btn-ghost btn-sm" href="/admin/bank/{{ b.id }}">{{ t('q.edit') }}</a>
+        {% endif %}
+      </td>
+    </tr>
+    {% endfor %}
+  </table>
+  {% else %}
+  <p class="muted">{{ t('bank.empty') }}</p>
+  {% endif %}
+</div>
+{% endblock %}

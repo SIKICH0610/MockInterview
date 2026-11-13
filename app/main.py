@@ -6,11 +6,12 @@ from fastapi.responses import JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy.orm import Session
 
-from .auth import TOKEN_TTL, hash_password, make_token, parse_token, verify_password
+from .auth import AUTH_COOKIE, TOKEN_TTL, hash_password, make_token, parse_token, verify_password
 from .db import Base, engine, get_db, SessionLocal
 from .i18n import cur_lang, current_lang, t
 from .models import AssessSession, Teacher
 from .routers import admin, api, report, workbench
+from .schema import upgrade_schema
 from .seed import seed_questions
 from .templating import templates
 
@@ -93,42 +94,24 @@ app.include_router(api.router)
 app.include_router(report.router)
 
 
-def _migrate_sqlite(engine_):
-    """Dev-time schema upgrades for the SQLite file (no Alembic yet)."""
-    if not str(engine_.url).startswith("sqlite"):
-        return
-    with engine_.begin() as conn:
-        def table_exists(name):
-            return bool(
-                conn.exec_driver_sql(
-                    "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?", (name,)
-                ).fetchone()
-            )
-
-        def cols(table):
-            return {row[1] for row in conn.exec_driver_sql(f"PRAGMA table_info({table})")}
-
-        # questions gained paper_id + a new unique constraint; the table is
-        # pure seed data, so rebuild it from scratch.
-        if table_exists("questions") and "paper_id" not in cols("questions"):
-            conn.exec_driver_sql("DROP TABLE questions")
-        if table_exists("assess_sessions") and "paper_id" not in cols("assess_sessions"):
-            conn.exec_driver_sql("ALTER TABLE assess_sessions ADD COLUMN paper_id INTEGER")
-        if table_exists("students"):
-            have = cols("students")
-            if "grade" not in have:
-                conn.exec_driver_sql("ALTER TABLE students ADD COLUMN grade VARCHAR(64) DEFAULT ''")
-            if "course" not in have:
-                conn.exec_driver_sql("ALTER TABLE students ADD COLUMN course VARCHAR(255) DEFAULT ''")
-        if table_exists("teachers") and "password_hash" not in cols("teachers"):
-            conn.exec_driver_sql("ALTER TABLE teachers ADD COLUMN password_hash VARCHAR(256) DEFAULT ''")
-        if table_exists("stage_obs") and "dim" not in cols("stage_obs"):
-            conn.exec_driver_sql("ALTER TABLE stage_obs ADD COLUMN dim VARCHAR(32)")
-
-
 @app.on_event("startup")
 def startup():
-    _migrate_sqlite(engine)
+    # Several workers start at once: on PostgreSQL, one at a time runs the schema
+    # upgrade + seeding (otherwise two can ALTER the same table and one crashes).
+    lock = None
+    if engine.dialect.name == "postgresql":
+        lock = engine.connect()
+        lock.exec_driver_sql("SELECT pg_advisory_lock(7240311)")
+    try:
+        _startup_setup()
+    finally:
+        if lock is not None:
+            lock.exec_driver_sql("SELECT pg_advisory_unlock(7240311)")
+            lock.close()
+
+
+def _startup_setup():
+    upgrade_schema(engine)
     Base.metadata.create_all(bind=engine)
     db = SessionLocal()
     try:
@@ -138,6 +121,9 @@ def startup():
 
         for p in db.query(Paper).all():
             ensure_paper_defaults(db, p.id)
+        from .bank import ensure_bank
+
+        ensure_bank(db)
         db.commit()
         admins = db.query(Teacher).filter_by(role="admin").all()
         if not any(a.password_hash for a in admins):
@@ -147,7 +133,11 @@ def startup():
                 db.add(admin_user)
             admin_user.role = "admin"
             admin_user.active = True
-            admin_user.password_hash = hash_password("admin123")
+            # Only for a brand-new, empty database. On a server set
+            # MI_INITIAL_ADMIN_PASSWORD so the public README default is never live.
+            admin_user.password_hash = hash_password(
+                os.environ.get("MI_INITIAL_ADMIN_PASSWORD") or "admin123"
+            )
             db.commit()
     finally:
         db.close()
@@ -186,7 +176,7 @@ def login_post(
         target = next if next.startswith("/") else "/"
         resp = RedirectResponse(target, status_code=303)
         resp.set_cookie(
-            "auth", make_token(teacher.id), max_age=TOKEN_TTL, httponly=True, samesite="lax"
+            "auth", make_token(teacher.id), max_age=TOKEN_TTL, **AUTH_COOKIE
         )
         return resp
     return templates.TemplateResponse(
@@ -225,12 +215,12 @@ def switch_account(tid: int, request: Request, db: Session = Depends(get_db)):
         return RedirectResponse("/", status_code=303)
 
     resp = RedirectResponse("/" if target.role == "admin" else "/wb", status_code=303)
-    resp.set_cookie("auth", make_token(target.id), max_age=TOKEN_TTL, httponly=True, samesite="lax")
+    resp.set_cookie("auth", make_token(target.id), max_age=TOKEN_TTL, **AUTH_COOKIE)
     if target.role == "admin":
         resp.delete_cookie("admin_auth")
     else:
         token = keep_token or request.cookies.get("auth", "")
-        resp.set_cookie("admin_auth", token, max_age=TOKEN_TTL, httponly=True, samesite="lax")
+        resp.set_cookie("admin_auth", token, max_age=TOKEN_TTL, **AUTH_COOKIE)
     return resp
 
 
@@ -241,7 +231,7 @@ def impersonate_stop(request: Request, db: Session = Depends(get_db)):
     tid = parse_token(admin_token) if admin_token else None
     teacher = db.get(Teacher, tid) if tid else None
     if teacher and teacher.active and teacher.role == "admin":
-        resp.set_cookie("auth", admin_token, max_age=TOKEN_TTL, httponly=True, samesite="lax")
+        resp.set_cookie("auth", admin_token, max_age=TOKEN_TTL, **AUTH_COOKIE)
     else:
         resp = RedirectResponse("/login", status_code=303)
         resp.delete_cookie("auth")

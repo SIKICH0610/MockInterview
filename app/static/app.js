@@ -310,6 +310,27 @@
   if (document.body.dataset.page === "stage") {
     const stageName = document.body.dataset.stage;
 
+    // Story Time: the response buttons show (highlighted) what this child got on
+    // the prompt currently selected; the record list sits at the bottom of the card.
+    function currentPrompt() {
+      const c = document.querySelector(".prompt-chip.on");
+      return c ? c.dataset.idx : "";
+    }
+    function syncResp(card) {
+      const item = card.querySelector(`.obs-item[data-prompt="${currentPrompt()}"]`);
+      card.querySelectorAll(".resp-btn").forEach((b) => {
+        b.classList.toggle("on", !!item && item.dataset.resp === b.dataset.resp);
+      });
+    }
+    function syncAll() { document.querySelectorAll(".obs-card").forEach(syncResp); }
+    function sortLog(card) {
+      const log = card.querySelector(".obs-log");
+      if (!log) return;
+      [...log.children]
+        .sort((a, b) => (parseInt(a.dataset.prompt, 10) || 0) - (parseInt(b.dataset.prompt, 10) || 0))
+        .forEach((it) => log.appendChild(it));
+    }
+
     document.querySelectorAll(".prompt-chip").forEach((c) => {
       c.addEventListener("click", () => {
         document.querySelectorAll(".prompt-chip").forEach((x) => x.classList.remove("on"));
@@ -317,8 +338,10 @@
         document.querySelectorAll(".prompt-text").forEach((pt) => {
           pt.classList.toggle("show", pt.dataset.idx === c.dataset.idx);
         });
+        syncAll();
       });
     });
+    if (stageName === "Story Time") syncAll();
 
     function flashInd(card, ok) {
       const ind = card.querySelector(".save-ind");
@@ -335,6 +358,17 @@
         const card = rb.closest(".obs-card");
         const noteInput = card.querySelector(".obs-note");
         const promptChip = document.querySelector(".prompt-chip.on");
+        // tapping the highlighted answer again clears it for this prompt
+        if (stageName === "Story Time" && rb.classList.contains("on")) {
+          const cur = card.querySelector(`.obs-item[data-prompt="${currentPrompt()}"]`);
+          if (cur) {
+            const { j } = await api("/stage/delete", { id: parseInt(cur.dataset.id, 10) });
+            if (j.ok) cur.remove();
+            syncResp(card);
+            flashInd(card, !!j.ok);
+          }
+          return;
+        }
         const payload = {
           student_id: parseInt(card.dataset.student, 10),
           stage: stageName,
@@ -353,6 +387,7 @@
           item.className = "obs-item";
           item.dataset.id = j.id;
           item.dataset.prompt = pkey;
+          item.dataset.resp = j.response;
           let html = "";
           if (j.prompt_index) html += '<span class="obs-p">P' + j.prompt_index + "</span>";
           html += '<span class="obs-resp r-' + j.response + '"></span>';
@@ -363,6 +398,8 @@
           item.querySelector(".obs-resp").textContent = rb.dataset.label;
           if (j.note) item.querySelector(".obs-note-txt").textContent = j.note;
           card.querySelector(".obs-log").prepend(item);
+          sortLog(card);
+          syncResp(card);
           if (noteInput) noteInput.value = "";
           flashInd(card, true);
         } else {
@@ -374,8 +411,10 @@
       const od = ev.target.closest(".obs-del");
       if (od) {
         const item = od.closest(".obs-item");
+        const card = item.closest(".obs-card");
         const { j } = await api("/stage/delete", { id: parseInt(item.dataset.id, 10) });
         if (j.ok) item.remove();
+        if (card) syncResp(card);
         return;
       }
 
@@ -553,29 +592,66 @@
   const printBtn = document.getElementById("print-btn");
   if (printBtn) printBtn.addEventListener("click", () => window.print());
 
+  // Teacher's View: English box -> EN report/PDF, Chinese box -> 中文 report/PDF
+  const sumEn = document.getElementById("summary-text");
+  const sumZh = document.getElementById("summary-text-zh");
+  const sumMeta = document.getElementById("summary-meta");
+  const sumSaved = { en: sumEn ? sumEn.value : "", zh: sumZh ? sumZh.value : "" };
+  const sumDirty = () =>
+    !!sumEn && (sumEn.value !== sumSaved.en || (!!sumZh && sumZh.value !== sumSaved.zh));
+  const studentId = () => parseInt(document.body.dataset.student, 10);
+
+  function aiAlert(btn, err) {
+    if (err === "not_configured") alert(btn.dataset.notconf);
+    else if (err === "billing_error") alert(btn.dataset.billing);
+    else alert(btn.dataset.failed + (err || ""));
+  }
+
+  async function saveSummary() {
+    const body = { student_id: studentId(), text: sumEn.value };
+    if (sumZh) body.text_zh = sumZh.value;
+    const { j } = await api("/summary/save", body);
+    if (!j.ok) return false;
+    sumSaved.en = sumEn.value;
+    if (sumZh) sumSaved.zh = sumZh.value;
+    if (sumMeta) sumMeta.textContent = (j.by || "") + " · " + j.time;
+    // keep the print block (what Print / PDF shows) in step with the saved text
+    const print = document.querySelector(".rp-summary-print");
+    if (print) {
+      const v = print.dataset.rlang === "zh" && sumZh ? sumZh.value : sumEn.value;
+      print.textContent = v.trim() ? v : print.dataset.auto || "";
+    }
+    return true;
+  }
+
   const aiBtn = document.getElementById("summary-ai");
-  if (aiBtn) {
+  if (aiBtn && sumEn) {
     aiBtn.addEventListener("click", async () => {
-      const ta = document.getElementById("summary-text");
       aiBtn.disabled = true;
       aiBtn.textContent = aiBtn.dataset.busy;
-      const { j } = await api("/summary/ai", {
-        student_id: parseInt(document.body.dataset.student, 10),
-        draft: ta.value,
-      });
+      const { j } = await api("/summary/ai", { student_id: studentId(), draft: sumEn.value });
       aiBtn.disabled = false;
       aiBtn.textContent = aiBtn.dataset.label;
-      const meta = document.getElementById("summary-meta");
-      if (j.ok) {
-        ta.value = j.text;
-        if (meta) meta.textContent = aiBtn.dataset.done;
-      } else if (j.error === "not_configured") {
-        alert(aiBtn.dataset.notconf);
-      } else if (j.error === "billing_error") {
-        alert(aiBtn.dataset.billing);
-      } else {
-        alert(aiBtn.dataset.failed + (j.error || ""));
-      }
+      if (!j.ok) return aiAlert(aiBtn, j.error);
+      sumEn.value = j.text;
+      if (sumZh && j.text_zh) sumZh.value = j.text_zh;
+      if (sumMeta) sumMeta.textContent = aiBtn.dataset.done;
+      if (j.zh_error) alert(aiBtn.dataset.zhfailed + j.zh_error);
+    });
+  }
+
+  const trBtn = document.getElementById("summary-translate");
+  if (trBtn && sumEn && sumZh) {
+    trBtn.addEventListener("click", async () => {
+      if (!sumEn.value.trim()) return alert(trBtn.dataset.need);
+      trBtn.disabled = true;
+      trBtn.textContent = trBtn.dataset.busy;
+      const { j } = await api("/summary/translate", { student_id: studentId(), text: sumEn.value });
+      trBtn.disabled = false;
+      trBtn.textContent = trBtn.dataset.label;
+      if (!j.ok) return aiAlert(trBtn, j.error);
+      sumZh.value = j.text_zh;
+      if (sumMeta) sumMeta.textContent = trBtn.dataset.done;
     });
   }
 
@@ -583,6 +659,14 @@
     pdfBtn.addEventListener("click", async () => {
       pdfBtn.disabled = true;
       pdfBtn.textContent = pdfBtn.dataset.busy;
+      // The PDF is rendered from the saved comment, so save pending edits first.
+      if (sumDirty() && !(await saveSummary())) {
+        pdfBtn.disabled = false;
+        pdfBtn.textContent = pdfBtn.dataset.label;
+        const list = document.getElementById("pdf-list");
+        alert((list ? list.dataset.failed : "PDF failed: ") + "summary_not_saved");
+        return;
+      }
       const sid = document.body.dataset.student;
       const r = await fetch(
         "/report/" + sid + "/pdf?rlang=" + (pdfBtn.dataset.rlang || "en"),
@@ -615,19 +699,7 @@
   });
 
   const sumSave = document.getElementById("summary-save");
-  if (sumSave) {
-    sumSave.addEventListener("click", async () => {
-      const ta = document.getElementById("summary-text");
-      const { j } = await api("/summary/save", {
-        student_id: parseInt(document.body.dataset.student, 10),
-        text: ta.value,
-      });
-      const meta = document.getElementById("summary-meta");
-      if (j.ok && meta) meta.textContent = (j.by || "") + " · " + j.time;
-      const print = document.querySelector(".rp-summary-print");
-      if (print) print.textContent = ta.value;
-    });
-  }
+  if (sumSave && sumEn) sumSave.addEventListener("click", saveSummary);
 
   /* ---------- header account switcher (admins) ---------- */
 
@@ -816,6 +888,25 @@
     });
   });
 
+  document.querySelectorAll(".student-email").forEach((inp) => {
+    inp.addEventListener("change", async () => {
+      const { j } = await api("/student/email", {
+        student_id: parseInt(inp.dataset.student, 10),
+        email: inp.value,
+      });
+      if (j.ok) {
+        inp.value = j.email;
+        inp.classList.toggle("em-missing", !j.email);
+        inp.title = "";
+      } else {
+        inp.title = j.error || "";
+        if (j.error) alert(j.error);
+      }
+      inp.style.outline = j.ok ? "2px solid #2e7d32" : "2px solid #b3261e";
+      setTimeout(() => (inp.style.outline = ""), 900);
+    });
+  });
+
   document.querySelectorAll(".student-level").forEach((sel) => {
     sel.addEventListener("change", async () => {
       if (!sel.value) return;
@@ -839,4 +930,37 @@
       setTimeout(() => (sel.style.outline = ""), 900);
     });
   });
+})();
+
+
+// Question pictures: tap to view full screen (e.g. to show the child on the iPad).
+(function () {
+  let box = null;
+  function close() { if (box) { box.remove(); box = null; } }
+  document.addEventListener("click", (e) => {
+    const b = e.target.closest(".qmedia-img");
+    if (!b) return;
+    e.preventDefault();
+    close();
+    box = document.createElement("div");
+    box.className = "lightbox";
+    const img = document.createElement("img");
+    img.src = b.dataset.full;
+    img.alt = b.querySelector("img")?.alt || "";
+    const x = document.createElement("button");
+    x.type = "button";
+    x.className = "lightbox-x";
+    x.setAttribute("aria-label", "Close");
+    x.textContent = "×";
+    box.append(img, x);
+    if (b.dataset.caption) {
+      const cap = document.createElement("div");
+      cap.className = "lightbox-cap";
+      cap.textContent = b.dataset.caption;
+      box.appendChild(cap);
+    }
+    box.addEventListener("click", close);
+    document.body.appendChild(box);
+  });
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape") close(); });
 })();

@@ -53,7 +53,35 @@ def ai_summary(request: Request, payload: dict = Body(...), db: Session = Depend
     ok, result = ai.draft_teacher_view(facts, str(payload.get("draft") or ""))
     if not ok:
         return JSONResponse(status_code=200, content={"ok": False, "error": result})
-    return {"ok": True, "text": result}
+    # The Chinese comment is adapted from the English draft so both PDFs say the
+    # same thing. If only this step fails, still return the English draft.
+    zh_ok, zh = ai.translate_teacher_view_zh(result)
+    out = {"ok": True, "text": result}
+    if zh_ok:
+        out["text_zh"] = zh
+    else:
+        out["zh_error"] = zh
+    return out
+
+
+@router.post("/summary/translate")
+def ai_translate(request: Request, payload: dict = Body(...), db: Session = Depends(get_db)):
+    """Re-create the Chinese comment from the (teacher-edited) English one.
+    Returns a draft only; the teacher saves it explicitly."""
+    student_id = int(payload["student_id"])
+    student = db.get(Student, student_id)
+    if not student:
+        return JSONResponse(status_code=404, content={"ok": False, "error": "student not found"})
+    me = _me(request)
+    if not _can_touch(me, student):
+        return JSONResponse(status_code=403, content=FORBIDDEN)
+
+    from ..services import ai
+
+    ok, result = ai.translate_teacher_view_zh(str(payload.get("text") or ""))
+    if not ok:
+        return JSONResponse(status_code=200, content={"ok": False, "error": result})
+    return {"ok": True, "text_zh": result}
 
 
 @router.post("/summary/save")
@@ -69,7 +97,12 @@ def save_summary(request: Request, payload: dict = Body(...), db: Session = Depe
     if row is None:
         row = Summary(student_id=student_id)
         db.add(row)
-    row.text = str(payload.get("text") or "")
+    # Only touch the languages the client sent, so an older page that posts
+    # just `text` never wipes the Chinese comment.
+    if "text" in payload:
+        row.text = str(payload.get("text") or "")
+    if "text_zh" in payload:
+        row.text_zh = str(payload.get("text_zh") or "")
     row.teacher_id = me.id if me else None
     db.commit()
     return {
@@ -449,6 +482,28 @@ def set_student_level(request: Request, payload: dict = Body(...), db: Session =
     st.level = level
     db.commit()
     return {"ok": True}
+
+
+@router.post("/student/email")
+def set_student_email(request: Request, payload: dict = Body(...), db: Session = Depends(get_db)):
+    from ..i18n import t
+    from ..services.mailer import split_emails
+
+    denied = _require_admin(request)
+    if denied:
+        return denied
+    st = db.get(Student, int(payload["student_id"]))
+    if not st:
+        return JSONResponse(status_code=404, content={"ok": False})
+    good, bad = split_emails(str(payload.get("email") or ""))
+    if bad:
+        return JSONResponse(status_code=400, content={"ok": False, "error": t("msg.email_bad").format(bad=", ".join(bad))})
+    value = ", ".join(good)
+    if len(value) > 255:
+        return JSONResponse(status_code=400, content={"ok": False, "error": "too long"})
+    st.parent_email = value
+    db.commit()
+    return {"ok": True, "email": value}
 
 
 @router.post("/group/teacher")

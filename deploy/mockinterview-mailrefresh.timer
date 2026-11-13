@@ -1,0 +1,10 @@
+[Unit]
+Description=Daily sender-mailbox sign-in refresh
+
+[Timer]
+OnCalendar=*-*-* 03:10:00
+RandomizedDelaySec=20min
+Persistent=true
+
+[Install]
+WantedBy=timers.target

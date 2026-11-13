@@ -1,0 +1,13 @@
+# Daily refresh of the sender-mailbox sign-in so it never expires from disuse.
+# Runs via mockinterview-mailrefresh.timer; does nothing until the mailbox is connected.
+[Unit]
+Description=Refresh the Assessment Workbench sender mailbox sign-in
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=mockinterview
+Group=mockinterview
+WorkingDirectory=/opt/mockinterview
+EnvironmentFile=/etc/mockinterview.env
+ExecStart=/opt/mockinterview/.venv/bin/python scripts/refresh_mail_token.py

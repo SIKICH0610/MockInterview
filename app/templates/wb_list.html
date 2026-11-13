@@ -4,7 +4,7 @@
 {% block content %}
 <div class="wb-head">
   <div>
-    <div class="kicker"><a href="/wb">{{ t('wb.kicker') }}</a> · {{ s.date }} · {{ s.label }}</div>
+    <div class="kicker"><a href="/wb?session_id={{ s.id }}">{{ t('wb.kicker') }}</a> · {{ s.date }} · {{ s.label }}</div>
     <h1 class="h-slim">{{ t('wb.individual.title') }} <span class="muted-h">· {{ teacher.name }}</span></h1>
   </div>
   {{ wbnav(s, 'individual') }}

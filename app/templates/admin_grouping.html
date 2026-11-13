@@ -23,7 +23,7 @@
     {% elif not groups %}{{ t('gb.need_group') }}
     {% else %}{{ pool | length }} {{ t('gb.not_done') }}{% endif %}
   </span>
-  <a class="btn gb-start {{ 'disabled' if not (students and groups and pool | length == 0) }}" href="/wb">{{ t('gb.start_scoring') }}</a>
+  <a class="btn gb-start {{ 'disabled' if not (students and groups and pool | length == 0) }}" href="/wb/stage?session_id={{ s.id }}">{{ t('gb.start_scoring') }}</a>
 </div>
 
 <p class="stage-hint">{{ t('gb.tap_hint') }}</p>

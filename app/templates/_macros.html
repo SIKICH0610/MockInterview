@@ -6,6 +6,88 @@
 </div>
 {% endmacro %}
 
+{% macro bank_tabs(active, pick_paper=None) %}
+{% if not pick_paper %}
+<div class="wb-nav bank-tabs">
+  <a class="wbn {{ 'on' if active == 'individual' }}" href="/admin/bank">{{ t('bank.tab_individual') }}</a>
+  <a class="wbn {{ 'on' if active == 'team' }}" href="/admin/teambank">{{ t('bank.tab_team') }}</a>
+  <a class="wbn {{ 'on' if active == 'pdf' }}" href="/admin/pdfs">{{ t('pdf.title') }}</a>
+</div>
+{% endif %}
+{% endmacro %}
+
+{% macro media_item(m) %}
+<figure class="qmedia-item">
+  {% if m.is_pdf %}
+  <a class="qmedia-pdf" href="/wb/media/{{ m.id }}" target="_blank" rel="noopener">
+    <span class="qmedia-pdf-tag">PDF</span><span>{{ m.filename }}</span>
+  </a>
+  {% else %}
+  <button type="button" class="qmedia-img" data-full="/wb/media/{{ m.id }}" data-caption="{{ m.caption or '' }}" title="{{ t('media.enlarge') }}">
+    <img src="/wb/media/{{ m.id }}" alt="{{ m.caption or m.filename }}" loading="lazy">
+  </button>
+  {% endif %}
+  {% if m.caption %}<figcaption class="qmedia-cap">{{ m.caption }}</figcaption>{% endif %}
+</figure>
+{% endmacro %}
+
+{% macro stem_text(text) %}
+{% set parts = stem_parts(text) %}
+{% if parts %}
+<div class="stem">
+  {% for p in parts %}
+    {% if p[0] == 'lead' %}<div class="stem-lead">{{ p[1] }}</div>
+    {% elif p[0] == 'step' %}<div class="stem-step"><span class="stem-num">{{ p[1] }}</span><span class="stem-body">{% if p[2] %}<b>{{ p[2] }}</b> {% endif %}{{ p[3] }}</span></div>
+    {% else %}<div class="stem-line">{{ p[1] }}</div>{% endif %}
+  {% endfor %}
+</div>
+{% endif %}
+{% endmacro %}
+
+{% macro media_block(media) %}
+{# pictures only; PDFs appear as the small 原题 icon (orig_links) in the header #}
+{% set pics = media | rejectattr('is_pdf') | list %}
+{% if pics %}
+<div class="qmedia">
+  {% for m in pics %}{{ media_item(m) }}{% endfor %}
+</div>
+{% endif %}
+{% endmacro %}
+
+{% macro orig_links(media) %}
+{% for m in media if m.is_pdf %}
+<a class="orig-link" href="/wb/media/{{ m.id }}" target="_blank" rel="noopener" title="{{ m.filename }}">
+  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/><path d="M9 13h6M9 17h6"/></svg>
+  {{ t('media.original') }}
+</a>
+{% endfor %}
+{% endmacro %}
+
+{% macro media_editor(media, back) %}
+{% if media %}
+<form method="post" action="/admin/media/update" class="media-editor">
+  <input type="hidden" name="back" value="{{ back }}">
+  {% for m in media %}
+  <div class="me-row">
+    <div class="me-thumb">{{ media_item(m) }}</div>
+    <div class="me-fields">
+      <input type="hidden" name="ids" value="{{ m.id }}">
+      <label>{{ t('media.caption') }}
+        <textarea name="caption_{{ m.id }}" rows="2" placeholder="{{ t('media.caption_ph') }}">{{ m.caption or '' }}</textarea></label>
+      <div class="me-bar">
+        <label class="me-order">{{ t('media.order') }} <input type="number" name="sort_{{ m.id }}" value="{{ loop.index }}" min="1" max="999"></label>
+        <span class="muted small me-name">{{ m.filename }}</span>
+        <button class="btn btn-danger btn-sm" type="submit" formaction="/admin/media/{{ m.id }}/delete"
+                onclick="return confirm({{ t('bank.media_confirm') | tojson }})">{{ t('btn.remove') }}</button>
+      </div>
+    </div>
+  </div>
+  {% endfor %}
+  <button class="btn btn-sm" type="submit">{{ t('media.save') }}</button>
+</form>
+{% endif %}
+{% endmacro %}
+
 {% macro rubric_block(q) %}
 <div class="rubric">
   <div class="rubric-col">
@@ -32,8 +114,10 @@
     <span class="qcode">{{ q.code }}</span>
     <span class="qtitle">{{ q.title }}</span>
     <span class="qability">{{ q.domain }} · {{ q.ability }}</span>
+    {{ orig_links(q.media) }}
   </div>
   <div class="qprompt">{{ q.prompt }}</div>
+  {{ media_block(q.media) }}
   {% if q.target %}<div class="qmeta"><b>{{ t('macro.target') }}:</b> {{ q.target }}</div>{% endif %}
   {% if q.setup %}<div class="qmeta qsetup"><b>{{ t('macro.setup') }}:</b> {{ q.setup }}</div>{% endif %}
   {{ rubric_block(q) }}

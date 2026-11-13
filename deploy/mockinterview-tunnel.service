@@ -1,0 +1,21 @@
+# Cloudflare quick tunnel: public HTTPS address for the workbench, no domain needed.
+# The address stays the same while this service keeps running; it changes only
+# when the service restarts (server reboot, crash). Current address:
+#   cat /var/lib/mockinterview/tunnel_url.txt
+[Unit]
+Description=Cloudflare quick tunnel for the Assessment Workbench
+After=network-online.target mockinterview.service
+Wants=network-online.target
+
+[Service]
+User=mockinterview
+Group=mockinterview
+ExecStartPre=/bin/rm -f /var/lib/mockinterview/tunnel.log /var/lib/mockinterview/tunnel_url.txt
+ExecStart=/usr/bin/cloudflared tunnel --no-autoupdate --logfile /var/lib/mockinterview/tunnel.log --url http://127.0.0.1:8008
+# Save the new address to a file once cloudflared prints it
+ExecStartPost=/bin/bash -c 'for i in $(seq 60); do u=$(grep -o "https://[a-z0-9-]*\\.trycloudflare\\.com" /var/lib/mockinterview/tunnel.log 2>/dev/null | head -1); if [ -n "$u" ]; then echo "$u" > /var/lib/mockinterview/tunnel_url.txt; exit 0; fi; sleep 1; done; exit 0'
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

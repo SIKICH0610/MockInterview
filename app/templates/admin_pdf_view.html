@@ -1,0 +1,132 @@
+{% extends "base.html" %}
+{% block title %}{{ src.filename }} · {{ t('pdf.title') }}{% endblock %}
+{% block content %}
+{% set keep = ('&target=' ~ (target | urlencode) if target else '') ~ ('&new=' ~ (new | urlencode) if new else '') %}
+<div class="page-head">
+  <div>
+    <div class="kicker"><a href="/admin/pdfs?{{ keep[1:] }}">{{ t('bank.title') | upper }} · {{ t('pdf.title') }}</a></div>
+    <h1 class="h-slim">{{ src.filename }} <span class="muted-h">{{ t('pdf.page_of').format(n=page, total=src.pages) }}</span></h1>
+  </div>
+  {% if target_back %}<div class="head-actions"><a class="btn" href="{{ target_back }}">{{ t('pdf.back_to_target') }}</a></div>{% endif %}
+</div>
+{% if msg %}<div class="flash">{{ msg }}</div>{% endif %}
+
+<div class="pdfv" id="pdfv" data-pdf="{{ src.id }}" data-page="{{ page }}">
+  <div class="pdfv-main">
+    <div class="pdfv-stage" id="pv-stage">
+      <img id="pv-img" src="/admin/pdfs/{{ src.id }}/page/{{ page }}" alt="{{ t('pdf.page_of').format(n=page, total=src.pages) }}" draggable="false">
+      <div id="pv-sel" class="pv-sel" hidden></div>
+    </div>
+  </div>
+  <aside class="pdfv-side card">
+    <div class="pdfv-nav">
+      <a class="btn btn-ghost btn-sm {{ 'disabled' if page <= 1 }}" href="/admin/pdfs/{{ src.id }}?page={{ page - 1 }}{{ keep }}" aria-label="{{ t('pdf.prev') }}">‹</a>
+      <select id="pv-goto" aria-label="{{ t('pdf.pages') }}">
+        {% for n in range(1, src.pages + 1) %}<option value="{{ n }}" {{ 'selected' if n == page }}>{{ t('pdf.page_of').format(n=n, total=src.pages) }}</option>{% endfor %}
+      </select>
+      <a class="btn btn-ghost btn-sm {{ 'disabled' if page >= src.pages }}" href="/admin/pdfs/{{ src.id }}?page={{ page + 1 }}{{ keep }}" aria-label="{{ t('pdf.next') }}">›</a>
+    </div>
+    {% if target_label %}<div class="pdfv-target">{{ t('pdf.for_target').format(label=target_label) }}</div>{% endif %}
+    <p class="muted small">{{ t('pdf.drag_hint') }}</p>
+    <div class="pdfv-row">
+      <button type="button" class="btn btn-ghost btn-sm" id="pv-whole">{{ t('pdf.whole_page') }}</button>
+      <button type="button" class="btn btn-ghost btn-sm" id="pv-clear">{{ t('pdf.clear') }}</button>
+    </div>
+    {% if target %}
+    <form method="post" action="/admin/pdfs/{{ src.id }}/attach" id="pv-attach">
+      <input type="hidden" name="page" value="{{ page }}">
+      <input type="hidden" name="rect" value="">
+      <input type="hidden" name="target" value="{{ target }}">
+      <button class="btn" type="submit" disabled>{{ t('pdf.attach') }}</button>
+    </form>
+    {% else %}
+    <div class="pdfv-actions">
+      {% for head, links in new_links %}
+      <div class="pdfv-actions-head">{{ head }}</div>
+      <div class="pdfv-btns">
+        {% for label, base in links %}
+        <a class="btn btn-sm pv-new disabled" data-base="{{ base }}" href="#">{{ label }}</a>
+        {% endfor %}
+      </div>
+      {% endfor %}
+      <span class="muted small pv-need-box">{{ t('pdf.need_box') }}</span>
+    </div>
+    {% endif %}
+    <img id="pv-preview" class="pv-preview" alt="" hidden>
+    <label class="pdfv-text">{{ t('pdf.text') }}
+      <textarea id="pv-text" rows="5" placeholder="{{ t('pdf.text_ph') if has_text else t('pdf.no_text') }}"></textarea></label>
+
+  </aside>
+</div>
+
+<script>
+(function () {
+  const root = document.getElementById("pdfv");
+  const pdf = root.dataset.pdf, page = root.dataset.page;
+  const stage = document.getElementById("pv-stage"), img = document.getElementById("pv-img");
+  const sel = document.getElementById("pv-sel"), preview = document.getElementById("pv-preview");
+  const text = document.getElementById("pv-text");
+  let start = null, rect = null;
+
+  const clamp = (v) => Math.min(1, Math.max(0, v));
+  function frac(e) {
+    const b = img.getBoundingClientRect();
+    return [clamp((e.clientX - b.left) / b.width), clamp((e.clientY - b.top) / b.height)];
+  }
+  function draw(r) {
+    if (!r) { sel.hidden = true; return; }
+    sel.hidden = false;
+    sel.style.left = r[0] * 100 + "%"; sel.style.top = r[1] * 100 + "%";
+    sel.style.width = (r[2] - r[0]) * 100 + "%"; sel.style.height = (r[3] - r[1]) * 100 + "%";
+  }
+  async function commit(r) {
+    rect = r;
+    const rs = r ? r.map((v) => v.toFixed(4)).join(",") : "";
+    const attach = document.getElementById("pv-attach");
+    if (attach) {
+      attach.querySelector("[name=rect]").value = rs;
+      attach.querySelector("button").disabled = !r;
+    }
+    const need = document.querySelector(".pv-need-box");
+    if (need) need.hidden = !!r;
+    document.querySelectorAll(".pv-new").forEach((a) => {
+      const b = a.dataset.base;
+      a.classList.toggle("disabled", !r);
+      a.href = r ? `${b}${b.includes("?") ? "&" : "?"}pdf=${pdf}&page=${page}&rect=${rs}` : "#";
+    });
+    if (!r) { preview.hidden = true; text.value = ""; return; }
+    preview.src = `/admin/pdfs/${pdf}/crop?page=${page}&rect=${rs}`;
+    preview.hidden = false;
+    try {
+      const j = await (await fetch(`/admin/pdfs/${pdf}/text?page=${page}&rect=${rs}`)).json();
+      text.value = j.text || "";
+      text.placeholder = j.text ? "" : {{ t('pdf.box_no_text') | tojson }};
+    } catch (e) { /* text is optional */ }
+  }
+  stage.addEventListener("pointerdown", (e) => {
+    e.preventDefault();
+    stage.setPointerCapture(e.pointerId);
+    start = frac(e);
+    draw([start[0], start[1], start[0], start[1]]);
+  });
+  stage.addEventListener("pointermove", (e) => {
+    if (!start) return;
+    const p = frac(e);
+    draw([Math.min(start[0], p[0]), Math.min(start[1], p[1]), Math.max(start[0], p[0]), Math.max(start[1], p[1])]);
+  });
+  stage.addEventListener("pointerup", (e) => {
+    if (!start) return;
+    const p = frac(e);
+    const r = [Math.min(start[0], p[0]), Math.min(start[1], p[1]), Math.max(start[0], p[0]), Math.max(start[1], p[1])];
+    start = null;
+    if (r[2] - r[0] < 0.02 || r[3] - r[1] < 0.02) { draw(rect); return; }
+    draw(r); commit(r);
+  });
+  document.getElementById("pv-whole").addEventListener("click", () => { draw([0, 0, 1, 1]); commit([0, 0, 1, 1]); });
+  document.getElementById("pv-clear").addEventListener("click", () => { draw(null); commit(null); });
+  document.getElementById("pv-goto").addEventListener("change", (e) => {
+    location.href = `/admin/pdfs/${pdf}?page=${e.target.value}{{ keep | safe }}`;
+  });
+})();
+</script>
+{% endblock %}

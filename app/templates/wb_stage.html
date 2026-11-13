@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "_macros.html" import wbnav %}
+{% from "_macros.html" import wbnav, media_block, orig_links, stem_text %}
 
 {% macro dimblock(st, dims, vals) %}
 <div class="dim-rows">
@@ -21,7 +21,7 @@
 {% block content %}
 <div class="wb-head">
   <div>
-    <div class="kicker"><a href="/wb">{{ t('wb.kicker') }}</a> · {{ s.date }} · {{ s.label }}</div>
+    <div class="kicker"><a href="/wb?session_id={{ s.id }}">{{ t('wb.kicker') }}</a> · {{ s.date }} · {{ s.label }}</div>
     <h1 class="h-slim">{{ t('stage.obs.title') }} <span class="muted-h">· {{ teacher.name }}</span></h1>
   </div>
   {{ wbnav(s, 'stages') }}
@@ -48,6 +48,17 @@
   {% endfor %}
 </div>
 
+{% if (material and (material.text or material.title)) or stage_media %}
+<div class="card stage-material">
+  <div class="stage-material-head">
+    <div class="rubric-head">{{ t('stage.material') }}{% if material and material.title %} · <span class="stage-material-title">{{ material.title }}</span>{% endif %}</div>
+    {{ orig_links(stage_media) }}
+  </div>
+  {% if material and material.text %}{{ stem_text(material.text) }}{% endif %}
+  {{ media_block(stage_media) }}
+</div>
+{% endif %}
+
 {% if not students %}
 <div class="card"><p class="muted">
   {% if teacher.role == 'admin' %}
@@ -64,7 +75,7 @@
   {% for st in students %}
   {% set rows = obs_by_student.get(st.id, []) %}
   {% set o = rows[0] if rows else None %}
-  <div class="obs-card single-card sep-card" data-student="{{ st.id }}" data-stage="Separation">
+  <div class="obs-card single-card sep-card" id="st-{{ st.id }}" data-student="{{ st.id }}" data-stage="Separation">
     <div class="qcard-head">
       <span class="stname">{{ st.name }}</span>
       <span class="lv-badge lv-{{ st.level }}">{{ st.level }}</span>
@@ -99,7 +110,7 @@
 
 <div class="card-grid wide">
   {% for st in students %}
-  <div class="obs-card" data-student="{{ st.id }}" data-stage="{{ stage }}">
+  <div class="obs-card" id="st-{{ st.id }}" data-student="{{ st.id }}" data-stage="{{ stage }}">
     <div class="qcard-head">
       <span class="stname">{{ st.name }}</span>
       <span class="lv-badge lv-{{ st.level }}">{{ st.level }}</span>
@@ -111,10 +122,13 @@
       <button type="button" class="resp-btn rb-mid" data-resp="prompted" data-label="{{ t('resp.prompted') }}">{{ t('resp.prompted') }}</button>
       <button type="button" class="resp-btn rb-low" data-resp="none" data-label="{{ t('resp.none') }}">{{ t('resp.none') }}</button>
     </div>
+    <div class="dim-divider">{{ t('dims.head') }}</div>
+    {{ dimblock(st, stage_dims, dimvals) }}
+    <div class="obs-log-head">{{ t('circle.log') }}</div>
     <div class="obs-log">
-      {% for o in obs_by_student.get(st.id, []) %}
+      {% for o in obs_by_student.get(st.id, []) | selectattr('prompt_index') | sort(attribute='prompt_index') %}
       {% if o.prompt_index %}
-      <div class="obs-item" data-id="{{ o.id }}" data-prompt="{{ o.prompt_index or '' }}">
+      <div class="obs-item" data-id="{{ o.id }}" data-prompt="{{ o.prompt_index or '' }}" data-resp="{{ o.response }}">
         <span class="obs-p">P{{ o.prompt_index }}</span>
         <span class="obs-resp r-{{ o.response }}">{{ t('resp.' ~ o.response) }}</span>
         {% if o.note %}<span class="obs-note-txt">{{ o.note }}</span>{% endif %}
@@ -124,8 +138,6 @@
       {% endif %}
       {% endfor %}
     </div>
-    <div class="dim-divider">{{ t('dims.head') }}</div>
-    {{ dimblock(st, stage_dims, dimvals) }}
   </div>
   {% endfor %}
 </div>
@@ -136,7 +148,7 @@
   {% for st in students %}
   {% set rows = obs_by_student.get(st.id, []) %}
   {% set o = rows[0] if rows else None %}
-  <div class="obs-card dim-card" data-student="{{ st.id }}" data-stage="{{ stage }}">
+  <div class="obs-card dim-card" id="st-{{ st.id }}" data-student="{{ st.id }}" data-stage="{{ stage }}">
     <div class="qcard-head">
       <span class="stname">{{ st.name }}</span>
       <span class="lv-badge lv-{{ st.level }}">{{ st.level }}</span>

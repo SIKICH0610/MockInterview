@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% from "_macros.html" import bank_tabs %}
+{% block title %}{{ t('pdf.title') }} · {{ t('bank.title') }}{% endblock %}
+{% block content %}
+{% set keep = ('&target=' ~ (target | urlencode) if target else '') ~ ('&new=' ~ (new | urlencode) if new else '') %}
+<div class="page-head">
+  <div>
+    <div class="kicker"><a href="/admin/sessions">{{ t('nav.admin') | upper }}</a></div>
+    <h1>{{ t('bank.title') }}</h1>
+  </div>
+  {% if target_back %}<div class="head-actions"><a class="btn btn-ghost" href="{{ target_back }}">{{ t('pdf.back_to_target') }}</a></div>{% endif %}
+</div>
+{{ bank_tabs('pdf') }}
+{% if msg %}<div class="flash">{{ msg }}</div>{% endif %}
+{% if target_label %}<div class="flash">{{ t('pdf.for_target').format(label=target_label) }}</div>
+{% else %}<p class="stage-hint">{{ t('pdf.hint') }}</p>{% endif %}
+
+<form method="post" action="/admin/pdfs/upload" enctype="multipart/form-data" class="card inline-form">
+  {% if target %}<input type="hidden" name="target" value="{{ target }}">{% endif %}
+  {% if new %}<input type="hidden" name="new" value="{{ new }}">{% endif %}
+  <label>{{ t('pdf.upload') }} <input type="file" name="file" accept="application/pdf,.pdf" required></label>
+  <button class="btn" type="submit">{{ t('btn.upload') }}</button>
+  <span class="muted small">{{ t('pdf.upload_hint') }}</span>
+</form>
+
+<div class="card">
+  {% if rows %}
+  <table class="table">
+    <tr><th>{{ t('pdf.file') }}</th><th>{{ t('pdf.pages') }}</th><th>{{ t('pdf.uploaded') }}</th><th></th></tr>
+    {% for r in rows %}
+    <tr>
+      <td><b>{{ r.filename }}</b> <span class="muted small">{{ (r.size / 1024 / 1024) | round(1) }} MB</span></td>
+      <td>{{ r.pages }}</td>
+      <td class="muted small">{{ r.created_at.strftime('%Y-%m-%d %H:%M') }}</td>
+      <td class="t-actions">
+        <a class="btn btn-sm" href="/admin/pdfs/{{ r.id }}?page=1{{ keep }}">{{ t('pdf.open') }}</a>
+        {% if not target and not new %}
+        <form method="post" action="/admin/pdfs/{{ r.id }}/delete" class="inline"
+              onsubmit="return confirm({{ t('pdf.delete_confirm') | tojson }})">
+          <button class="btn btn-danger btn-sm" type="submit">{{ t('btn.delete') }}</button>
+        </form>
+        {% endif %}
+      </td>
+    </tr>
+    {% endfor %}
+  </table>
+  {% else %}
+  <p class="muted">{{ t('pdf.empty') }}</p>
+  {% endif %}
+</div>
+{% endblock %}

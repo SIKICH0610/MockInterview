@@ -1,0 +1,26 @@
+# systemd unit: starts the app on boot and restarts it if it crashes.
+# Install:  sudo cp deploy/mockinterview.service /etc/systemd/system/
+#           sudo systemctl daemon-reload && sudo systemctl enable --now mockinterview
+# Logs:     journalctl -u mockinterview -f
+# Assumes the code lives in /opt/mockinterview, owned by the "mockinterview" user.
+
+[Unit]
+Description=Think Academy SV Assessment Workbench
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=mockinterview
+Group=mockinterview
+WorkingDirectory=/opt/mockinterview
+EnvironmentFile=/etc/mockinterview.env
+# 2 workers: one long PDF batch does not block other teachers.
+# Only listens on localhost; nginx in front handles HTTPS.
+ExecStart=/opt/mockinterview/.venv/bin/python -m uvicorn app.main:app \
+    --host 127.0.0.1 --port 8008 --workers 2 \
+    --proxy-headers --forwarded-allow-ips=127.0.0.1
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
