@@ -1,0 +1,19 @@
+{% if entries %}
+<ol class="hist-list">
+  {% for e in entries %}
+  <li class="hist-item hist-{{ e.action }}">
+    <div class="hist-meta">
+      <b class="hist-what">{{ e.what }}</b>{% if show_child and e.child %} <span class="hist-child">· {{ e.child }}</span>{% endif %}
+      <span class="by">{{ e.who }} · {{ e.at.strftime('%m-%d %H:%M') }}</span>
+    </div>
+    <ul class="hist-lines">
+      {% for label, o, n, fo, fn in e.lines %}
+      <li>{% if o or n %}<span class="hist-f">{{ label }}</span> <span class="hist-old" title="{{ fo }}">{{ o }}</span> <span class="hist-arrow">→</span> <span class="hist-new" title="{{ fn }}">{{ n }}</span>{% else %}{{ label }}{% endif %}</li>
+      {% endfor %}
+    </ul>
+  </li>
+  {% endfor %}
+</ol>
+{% else %}
+<p class="muted small hist-none">{{ t('hist.none') }}</p>
+{% endif %}

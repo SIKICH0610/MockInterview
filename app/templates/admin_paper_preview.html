@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+{% block title %}{{ t('build.preview') }} · {{ p.name }}{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <div class="kicker"><a href="/admin/papers">{{ t('papers.title') | upper }}</a> · <a href="/admin/papers/{{ p.id }}/build">{{ p.name }}</a></div>
+    <h1>{{ t('build.preview') }} <span class="muted-h">{{ p.name }}</span></h1>
+  </div>
+  <div class="head-actions"><a class="btn btn-ghost" href="/admin/papers/{{ p.id }}/build">{{ t('build.back') }}</a></div>
+</div>
+{% include "_paper_preview.html" %}
+{% endblock %}

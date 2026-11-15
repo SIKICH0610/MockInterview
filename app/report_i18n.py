@@ -143,6 +143,11 @@ def ability_name(lang, raw):
 
 
 def stage_name(lang, raw):
+    from .i18n import custom_stage_label
+
+    custom = custom_stage_label(raw, lang == "zh")
+    if custom:
+        return custom
     return STAGE_ZH.get(raw, raw) if lang == "zh" else raw
 
 
@@ -159,6 +164,9 @@ _EN = {
     "assessed_by": "Assessed by",
     "report_date": "Report date",
     "bubbles_cap": "Seven abilities assessed in this report",
+    "inside_cap": "Inside this report",
+    "inside_notes": ["Scores at a glance and the teacher's view", "Strengths across the seven abilities", "What your child did on every task",
+                     "Ratings from the group activities", "Social-emotional and classroom habits", "What each task assessed, with practice for home"],
     "bubbles_star": "★ strongest areas this session",
 
     "ov_title": "Performance Overview",
@@ -216,10 +224,23 @@ _EN = {
 
     "grp_title": "Group Activities · SEL & Classroom Skills",
     "grp_sub": "Observed from Separation onward",
+    "grp_only_title": "Group Activities",
+    "hp_title": "Key Abilities & Home Practice",
+    "hp_sub_math": "Mathematics · what each task assessed, and how to keep practicing at home",
+    "hp_sub_eng": "English · what each task assessed, and how to keep practicing at home",
+    "hp_th_key": "Task & key ability",
+    "hp_th_practice": "Extra practice",
+    "hp_th_game": "At-home game",
+    "hp_check": "Check:",
+    "hp_focus": "Suggested focus",
+    "hp_foot": "Practice prompts and home games are follow-up activities for after the assessment. Key abilities describe what each task sampled in this one session; they are learning connections, not admission requirements.",
+    "sel_page_title": "SEL & Classroom Skills",
+    "sel_page_sub": "Behavior observed across the session · each area starts at 50",
+    "task_eng_sub": "English tasks · Independent vs. after guidance",
     "grp_explain": "Teachers observed each child through the group activities and rated what they saw on a shared rubric; ratings describe this one session.",
     "not_recorded": "Not recorded",
-    "circle_overall": "Story Time · overall ratings",
-    "circle_story": "Story Time · story responses",
+    "circle_overall": "{stage} · overall ratings",
+    "circle_story": "{stage} · responses",
     "th_prompt": "Prompt",
     "th_response": "Response",
     "th_said": "What the child said / did",
@@ -264,6 +285,9 @@ _ZH = {
     "assessed_by": "测评老师",
     "report_date": "报告日期",
     "bubbles_cap": "本报告考察的七项能力",
+    "inside_cap": "报告内容",
+    "inside_notes": ["成绩一览与老师评语", "七项能力的强项分布", "每道题的具体表现",
+                     "集体环节中的表现评价", "社会情感与课堂习惯", "每道题考察什么，以及在家怎么练"],
     "bubbles_star": "★ 为本场最突出的能力",
 
     "ov_title": "整体表现概览",
@@ -321,10 +345,23 @@ _ZH = {
 
     "grp_title": "集体环节 · 社会情感与课堂技能",
     "grp_sub": "自入场分离起全程观察",
+    "grp_only_title": "集体环节",
+    "hp_title": "关键能力与家庭练习",
+    "hp_sub_math": "数学 · 每道题考察什么，以及在家可以怎么继续练习",
+    "hp_sub_eng": "英语 · 每道题考察什么，以及在家可以怎么继续练习",
+    "hp_th_key": "题目与关键能力",
+    "hp_th_practice": "额外练习",
+    "hp_th_game": "家庭小游戏",
+    "hp_check": "参考答案：",
+    "hp_focus": "建议重点练习",
+    "hp_foot": "练习题和家庭小游戏是测评之后的延伸活动。关键能力描述的是本场每道题考察的内容，属于学习参考，并非录取要求。",
+    "sel_page_title": "社会情感与课堂技能",
+    "sel_page_sub": "全场行为观察 · 每项满分 50",
+    "task_eng_sub": "英语逐题 · 区分独立完成与引导后完成",
     "grp_explain": "老师在集体环节中按统一量表记录每位孩子的表现；评价仅描述本场观察。",
     "not_recorded": "未记录",
-    "circle_overall": "绘本故事 · 整体评价",
-    "circle_story": "绘本故事 · 逐题回应",
+    "circle_overall": "{stage} · 整体评价",
+    "circle_story": "{stage} · 逐题回应",
     "th_prompt": "提问",
     "th_response": "回应",
     "th_said": "孩子的表现",

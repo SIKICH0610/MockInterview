@@ -182,6 +182,30 @@ S = {
     "n.students": ("students", "名学生"),
     "confirm.delete_group": ("Delete this group? Students stay in the session.", "删除该组？学生仍保留在场次中。"),
     "btn.add_group": ("Add group", "新建组"),
+    "wb.not_assigned": ("You are not assigned to that session. You can only open sessions where a group is assigned to you.",
+                        "你没有被分配到那个场次。只能打开有你带组的场次。"),
+    "wb.none_assigned": ("You are not assigned to any session yet. Ask an admin to give you a group.", "你还没有被分配到任何场次，请联系管理员给你分组。"),
+    "wb.other_groups": ("Other teachers' groups", "其他老师的组"),
+    "wb.viewing_other": ("You are looking at {teacher}'s group {group} — this is not your own group.", "你正在查看 {teacher} 的 {group} 组——这不是你自己的组。"),
+    "wb.viewing_unassigned": ("You are looking at group {group}, which has no teacher assigned.", "你正在查看 {group} 组，这个组还没有指派老师。"),
+    "wb.back_mine": ("Back to my group", "回到我的组"),
+    "wb.my_students": ("My group", "我的组"),
+    "wb.other_students": ("Other teachers' students", "其他老师的学生"),
+    "wb.other_students_hint": ("These children belong to other teachers' groups. Open one only to check or help.", "这些学生属于其他老师的组，只在需要查看或协助时打开。"),
+    "groups.bulk_open": ("Add groups by teacher", "按老师批量建组"),
+    "groups.bulk_title": ("Who is helping in this assessment?", "这次测评有哪些老师参加？"),
+    "groups.bulk_hint": ("Tick the teachers. Each one gets a new group that is already assigned to them.",
+                         "勾选参加的老师，每位老师会新建一个组并直接指派给他。"),
+    "groups.bulk_search": ("Search a name", "搜索姓名"),
+    "groups.bulk_all": ("Select all", "全选"),
+    "groups.bulk_clear": ("Clear", "清空"),
+    "groups.bulk_has": ("has group {name}", "已有组 {name}"),
+    "groups.bulk_naming": ("Group names", "组名"),
+    "groups.bulk_letters": ("Letters: A, B, C …", "字母：A、B、C…"),
+    "groups.bulk_teacher": ("The teacher's name", "老师的名字"),
+    "groups.bulk_create": ("Create {n} groups", "创建 {n} 个组"),
+    "groups.bulk_done": ("Created {n} groups: {names}", "已新建 {n} 个组：{names}"),
+    "groups.bulk_none": ("No teacher was ticked (or they all already have a group).", "没有勾选老师（或勾选的老师都已经有组）。"),
     "placeholder.group_name": ("Group name (e.g. Group A)", "组名（如 Group A）"),
     "admin.need_teachers": ("No teachers yet —", "还没有老师——"),
     "admin.need_teachers2": ("first to assign groups.", "后才能指派分组。"),
@@ -293,11 +317,31 @@ S = {
     "teachers.make_admin": ("Make admin", "设为管理员"),
     "teachers.make_teacher": ("Make teacher", "设为老师"),
     "teachers.cant_self": ("You cannot change your own role.", "不能修改自己的角色。"),
+    "teachers.owner": ("Owner", "所有者"),
+    "teachers.owner_only": ("Only the owner account can decide who is an admin.", "只有所有者账号可以调整谁是管理员。"),
+    "teachers.no_manage_admin": ("Only the owner account can change or open another admin's account.", "只有所有者账号可以修改或进入其他管理员的账号。"),
+    "teachers.owner_protected": ("The owner account cannot be demoted, deactivated or deleted.", "所有者账号不能被降级、停用或删除。"),
+    "teachers.role_set": ("{name} is now: {role}", "{name} 现在是：{role}"),
+    "teachers.perm_note_owner": ("You are the owner: only you can make or remove admins and manage other admins' accounts.",
+                                 "你是所有者：只有你可以设置或取消管理员，以及管理其他管理员的账号。"),
+    "teachers.perm_note_admin": ("Admins can look after regular teacher accounts. Who is an admin, and other admins' accounts, can only be changed by the owner ({owner}).",
+                                 "管理员可以管理普通老师的账号。谁是管理员、以及其他管理员的账号，只有所有者（{owner}）可以调整。"),
     "switch.header": ("Switch account", "切换账号"),
     "impersonate.back": ("Back to admin", "返回管理员"),
     "impersonate.bar": ("You are viewing as", "当前正以该身份操作："),
     "teachers.pw_set": ("Password updated", "密码已设置"),
     "teachers.has_pw": ("Password set", "已设密码"),
+    "teachers.delete": ("Delete account", "删除账号"),
+    "teachers.delete_confirm": (
+        "Delete the account \"{name}\"? Children's scores and notes they recorded are kept (\"recorded by\" becomes blank); groups they led become unassigned. This cannot be undone.",
+        "删除账号「{name}」？TA 记录的打分和备注都会保留（「记录人」显示为空），TA 带的组会变成未分配老师。此操作无法撤销。",
+    ),
+    "teachers.deleted": ("Deleted {name} ({n} records kept, recorded-by cleared)", "已删除 {name}（保留了 {n} 条记录，记录人已清空）"),
+    "teachers.cannot_delete_self": ("You cannot delete the account you are signed in with", "不能删除自己正在使用的账号"),
+    "teachers.cannot_delete_last_admin": ("This is the only admin; make someone else admin first", "这是唯一的管理员账号，请先把别人设为管理员"),
+    "teachers.rename": ("Rename", "改名"),
+    "teachers.renamed": ("Renamed to {name}", "已改名为 {name}"),
+    "teachers.name_taken": ("That name is already used by another account", "这个名字已经有账号在用"),
     "teachers.no_pw": ("No password", "未设密码"),
     "placeholder.new_pw": ("new password", "新密码"),
 
@@ -310,6 +354,21 @@ S = {
     "papers.no_clone": ("— empty interview —", "—— 空白面试 ——"),
     "papers.name_taken": ("That interview name already exists.", "面试名称已存在。"),
     "papers.in_use": ("This interview is used by sessions and cannot be deleted.", "该面试已被场次使用，不能删除。"),
+    "papers.in_use_by": ("“{name}” is used by {n} session(s): {sessions}. Delete those sessions first, then delete the interview.",
+                         "「{name}」正在被 {n} 个场次使用：{sessions}。请先删除这些场次，再删除这套面试。"),
+    "papers.last": ("This is the only interview — at least one has to stay.", "这是唯一的一套面试，至少要保留一套。"),
+    "papers.delete": ("Delete this interview", "删除这套面试"),
+    "papers.delete_confirm": ("Delete the whole interview “{name}” — its {n} questions, team parts, stems and pictures? This cannot be undone.",
+                              "删除整套面试「{name}」——包括 {n} 道题、集体环节、题干和图片？此操作无法撤销。"),
+    "sessions.delete": ("Delete this session", "删除这个场次"),
+    "sessions.rename": ("Change the name or date", "修改名称或日期"),
+    "sessions.renamed": ("Saved: {label}", "已保存：{label}"),
+    "sessions.rename_empty": ("The session needs a name.", "场次名称不能为空。"),
+    "sessions.rename_bad_date": ("The date must look like 2026-11-16.", "日期格式应为 2026-11-16。"),
+    "papers.rename": ("Rename this interview", "修改面试名称"),
+    "btn.cancel_edit": ("Cancel", "取消"),
+    "confirm.delete_session_named": ("Delete the whole session “{label}” — its {n} students, groups and every result recorded for them? This cannot be undone.",
+                                     "删除整个场次「{label}」——包括 {n} 名学生、分组和他们的全部记录？此操作无法撤销。"),
     "papers.deleted": ("Interview deleted", "面试已删除"),
     "papers.versions": ("Versions", "版本"),
     "papers.count": ("Questions", "题目数"),
@@ -412,6 +471,110 @@ S = {
     ),
     "bank.tags": ("Other labels (optional)", "其他标签（可选）"),
     "bank.tags_ph": ("comma-separated, e.g. pattern, colors", "用逗号隔开，如 规律, 颜色"),
+    "build.title": ("Interview builder", "面试搭建"),
+    "build.open": ("Build", "搭建"),
+    "build.hint": (
+        "Drag from the question bank on the left into a section on the right (or use the ＋ buttons). Drag inside a section to reorder. The team interview comes first; switch to Preview to see what teachers will see.",
+        "把左边题库里的题拖到右边对应的部分（也可以点「＋」按钮），在同一部分里拖动可以调整顺序。集体面试排在最前；切到「预览」可以看老师看到的样子。",
+    ),
+    "build.locked": (
+        "Children have already been scored on this interview: individual questions are locked. Team stems can still be changed. To change questions, create a new interview copied from this one.",
+        "已经有孩子用这套面试打过分：个人题已锁定，集体题干仍可更换。要改题目，请新建一套面试并复制这一套。",
+    ),
+    "build.team": ("Team interview", "集体面试"),
+    "build.team_hint": ("add the parts in lesson order; each part has its own stem and its own rating",
+                        "按上课流程添加环节；每个环节有自己的题干和评价"),
+    "build.err_no_part": ("This interview has no such part", "这套面试里没有这个环节"),
+    "grades.all": ("All grades", "所有年级"),
+    "grades.add": ("Add grade", "添加年级"),
+    "grades.name": ("New grade", "新年级"),
+    "grades.name_ph": ("e.g. G1", "例如 G1"),
+    "grades.copy_from": ("Start with", "题目从哪来"),
+    "grades.copy_none": ("No questions (drag them in)", "空白（自己拖题进来）"),
+    "grades.copy_of": ("A copy of {level}'s questions", "复制 {level} 的题目"),
+    "grades.added": ("Grade {level} added", "已添加年级 {level}"),
+    "grades.removed": ("Grade {level} removed", "已移除年级 {level}"),
+    "grades.exists": ("This interview already has {level}", "这套面试已经有 {level}"),
+    "grades.bad_name": ("A grade name is 1–8 letters or digits, e.g. TK, K, G1", "年级名称为 1–8 个字母或数字，例如 TK、K、G1"),
+    "grades.last": ("An interview needs at least one grade.", "一套面试至少要保留一个年级。"),
+    "grades.in_use": ("Children in {level} already have scores, so this grade cannot be removed.", "{level} 的孩子已经有打分，不能移除这个年级。"),
+    "grades.remove": ("Remove grade {level}", "移除年级 {level}"),
+    "grades.remove_confirm": ("Remove grade {level} and its {n} questions from this interview?", "从这套面试移除年级 {level} 和它的 {n} 道题？"),
+    "parts.add": ("Add a part", "添加环节"),
+    "parts.name": ("Part name", "环节名称（英文）"),
+    "parts.name_zh": ("Chinese name", "中文名称"),
+    "parts.name_ph": ("e.g. Building Blocks", "例如 Building Blocks"),
+    "parts.name_zh_ph": ("e.g. 积木搭建", "例如 积木搭建"),
+    "parts.kind": ("Rated by", "评价方式"),
+    "parts.kind.rubric": ("Rating items", "评分项"),
+    "parts.kind.prompts": ("Questions + rating items", "提问记录 + 评分项"),
+    "parts.kind.separation": ("Separation, 3 levels", "分离表现（三档）"),
+    "parts.added": ("Added the part “{name}”", "已添加环节「{name}」"),
+    "parts.removed": ("Part removed", "环节已移除"),
+    "parts.in_use": ("This part already has {n} saved records, so it cannot be removed. Clear the session results first.",
+                     "这个环节已经有 {n} 条记录，不能移除。请先清除场次结果。"),
+    "parts.last": ("An interview needs at least one team part.", "一套面试至少要保留一个集体环节。"),
+    "parts.manage": ("Add, reorder or remove parts in the builder →", "在搭建页添加、排序或移除环节 →"),
+    "parts.up": ("Move earlier", "往前移"),
+    "parts.down": ("Move later", "往后移"),
+    "parts.rename": ("Rename", "改名"),
+    "parts.delete": ("Remove this part", "移除这个环节"),
+    "parts.delete_confirm": ("Remove this part, with its stem, pictures and rating items, from this interview?",
+                             "从这套面试移除这个环节（包括题干、图片和评分项）？"),
+    "parts.write_stem": ("Write the stem / upload pictures", "写题干 / 上传图片"),
+    "parts.eval": ("Rated on:", "评价项："),
+    "parts.edit_eval": ("Edit rating", "修改评价"),
+    "parts.no_prompts": ("no questions yet", "还没有提问"),
+    "parts.n_prompts": ("{n} questions", "{n} 个提问"),
+    "parts.pick": ("Click the part this stem belongs to (Esc to cancel)", "点一下这个题干要放进的环节（Esc 取消）"),
+    "parts.pick_btn": ("Choose a part", "选择放进哪个环节"),
+    "build.individual": ("Individual interview", "个人面试"),
+    "build.individual_hint": ("one column per grade — keep TK, K or both, or add another grade below; codes renumber automatically",
+                              "每个年级一列——可以只留 TK、只留 K、两个都要，或在下面添加新年级；题号自动编排"),
+    "build.drop_stem": ("Drag a stem here from the bank, or write one below", "从题库把题干拖到这里，或在下面直接写"),
+    "build.drop_q": ("Drag questions here", "把题目拖到这里"),
+    "build.no_stem": ("No stem yet.", "还没有题干。"),
+    "build.view_outline": ("Structure", "结构"),
+    "build.view_preview": ("Preview", "预览"),
+    "build.preview": ("Interview preview", "面试预览"),
+    "build.preview_tab": ("Open preview", "打开预览"),
+    "build.details": ("Detailed settings", "详细设置"),
+    "build.back": ("Back to the builder", "返回搭建"),
+    "build.add_to": ("Add to {where}", "添加到 {where}"),
+    "build.added": ("Added {code}", "已添加 {code}"),
+    "build.in_use": ("Already in this interview", "这套面试里已经有了"),
+    "build.confirm_replace": ("Replace this activity's current stem?", "替换这个环节现在的题干？"),
+    "build.confirm_clear": ("Remove this activity's stem and its pictures from this interview?", "从这套面试移除这个环节的题干和图片？"),
+    "build.err_missing": ("That item no longer exists; reload the page", "这一项已经不存在，请刷新页面"),
+    "build.scored_as": ("Scored as:", "打分方式："),
+    "build.rated": ("Rated:", "评价档位："),
+    "sheet.upload": ("Key abilities & home practice sheet (.xlsx)", "关键能力与家庭练习表（.xlsx）"),
+    "sheet.hint": (
+        "One row per question ID (TK M01, K E03 …). Fills each question's key ability, extra practice, answers, at-home game and curriculum links, here and in the question bank. Scores are not touched.",
+        "每行一个题号（TK M01、K E03…）。会填入每道题的关键能力、额外练习、答案、家庭游戏和课程对应，面试和题库里同时更新，不影响分数。",
+    ),
+    "sheet.bad_file": ("That file could not be read as an .xlsx spreadsheet", "这个文件无法按 .xlsx 表格读取"),
+    "sheet.no_rows": ("No rows with a question ID like \"TK M01\" were found", "没有找到「TK M01」这样的题号行"),
+    "sheet.done": ("Updated {n} questions from the sheet.", "已从表格更新 {n} 道题。"),
+    "sheet.missing": ("Not in this interview: {ids}.", "这套面试里没有这些题号：{ids}。"),
+    "sheet.mismatch": ("Check these — the sheet's task differs from the question here: {items}", "请核对——表格里的题目和这里的不一致：{items}"),
+    "sheet.has_practice": ("practice", "含练习"),
+    "bank.step_practice": ("4 · Key ability & home practice (printed on the report)", "4 · 关键能力与家庭练习（会印在报告上）"),
+    "bank.practice_hint": (
+        "These show on the report's last pages for every child: what the task assessed, extra practice, and a game to play at home.",
+        "这些内容会出现在每个孩子报告的最后几页：这道题考察什么、额外练习题、在家可以玩的小游戏。",
+    ),
+    "bank.key_ability": ("Key ability assessed", "考察的关键能力"),
+    "bank.key_ability_ph": ("e.g. Number Sense: take-away subtraction within 5", "如 Number Sense: take-away subtraction within 5"),
+    "bank.practice": ("Extra practice questions", "额外练习题"),
+    "bank.practice_answer": ("Practice answers / what to check", "练习答案 / 检查要点"),
+    "bank.home_game": ("At-home hands-on game", "家庭动手小游戏"),
+    "bank.curriculum": ("Curriculum links (for teachers, not printed)", "课程对应（老师参考，不印在报告上）"),
+    "bank.ta_lesson": ("Think Academy lesson", "对应的 Think Academy 课次"),
+    "bank.ta_topic": ("Think Academy topic match", "对应的 Think Academy 主题"),
+    "bank.ccss_module": ("CCSS knowledge module", "CCSS 知识模块"),
+    "bank.ccss_codes": ("CCSS code(s)", "CCSS 编号"),
+    "bank.scope_note": ("Alignment / scope note", "对应说明"),
     "bank.e_rubric": ("Expression rubric", "表达评分标准"),
     "bank.save_back": ("Also update the question bank entry (other interviews are not affected)", "同时更新题库里的这道题（不影响其他面试）"),
     "bank.saved_back": ("Saved, and the question bank entry was updated", "已保存，题库里的这道题也已更新"),
@@ -445,15 +608,72 @@ S = {
     "qtype.count.desc": ("Academic 0/1/2 plus how many of N items were correct", "学业 0/1/2，另记 N 个小题答对几个"),
     "domain.Mathematics": ("Mathematics", "数学"),
     "domain.English": ("English", "英语"),
+    "media.open_pdf": ("Open", "打开"),
+    "media.pdf_note": ("Shows on the scoring page as the 原题 (Original) button next to the title.", "在打分页显示为标题旁边的「原题」按钮。"),
     "media.caption": ("Picture explanation", "图片说明"),
     "media.caption_ph": ("e.g. Page 3: point to the bee and ask what it is doing", "如：第 3 页，指着小蜜蜂问它在做什么"),
     "media.order": ("Order", "顺序"),
     "media.save": ("Save explanations and order", "保存图片说明和顺序"),
     "media.saved": ("Picture explanations saved", "图片说明已保存"),
     "media.editor_hint": (
-        "Each picture can carry an explanation; it shows under the picture on the scoring page and in full screen. Change the numbers to reorder (e.g. story-book pages).",
-        "每张图片都可以写说明，会显示在打分页的图片下方和全屏图片上。改数字可以调整顺序（比如绘本的页码）。",
+        "A picture's explanation shows under it on the scoring page and in full screen. Change the numbers to reorder.",
+        "图片说明会显示在打分页的图片下方和全屏图片上；改数字可以调整顺序。",
     ),
+    "hist.title": ("Change history", "修改记录"),
+    "hist.btn": ("Change history", "修改记录"),
+    "hist.student_head": ("Change history", "修改记录"),
+    "hist.hint": (
+        "Every change to children's results in this session: who, when, before → after. Entries cannot be edited or deleted. Quick successive edits by one person within a minute are merged.",
+        "本场所有孩子结果的修改：谁、什么时候、改之前 → 改之后。记录不能修改或删除；同一个人一分钟内连续改同一项会合并成一条。",
+    ),
+    "hist.none": ("No changes recorded yet.", "还没有修改记录。"),
+    "hist.csv": ("Export CSV", "导出 CSV"),
+    "hist.who": ("Who", "修改人"),
+    "hist.what": ("What", "类别"),
+    "hist.entries": ("entries", "条记录"),
+    "hist.latest_n": ("latest {n} shown", "只显示最近 {n} 条"),
+    "hist.empty": ("(empty)", "（空）"),
+    "hist.system": ("System", "系统"),
+    "hist.via": ("(by {name})", "（{name} 代操作）"),
+    "hist.deleted": ("Deleted", "已删除"),
+    "hist.reviewed": ("Confirmed as reviewed", "确认复核"),
+    "hist.unreviewed": ("Review undone", "撤销复核"),
+    "hist.bulk_cleared": ("Cleared all results of this session ({n} records)", "清除了本场全部结果（{n} 条）"),
+    "hist.flag": ("Changed after review", "复核后有修改"),
+    "hist.flag_tip": ("{n} change(s) after the review, latest {when}. Click to see them.", "复核后有 {n} 处修改，最近一次 {when}，点击查看。"),
+    "hist.kind.score": ("Individual question", "个人题"),
+    "hist.kind.stage": ("Team activity", "集体环节"),
+    "hist.kind.event": ("SEL / Classroom event", "SEL / 课堂事件"),
+    "hist.kind.review": ("Review", "复核"),
+    "hist.kind.comment": ("Teacher's View comment", "老师评语"),
+    "hist.kind.roster": ("Roster", "名单"),
+    "hist.kind.bulk": ("Bulk action", "批量操作"),
+    "hist.f.status": ("Status", "状态"),
+    "hist.f.academic": ("Academic", "学业"),
+    "hist.f.expression": ("Expression", "表达"),
+    "hist.f.trial": ("Correct items", "答对数"),
+    "hist.f.note": ("Note", "备注"),
+    "hist.f.response": ("Response", "回应"),
+    "hist.f.category": ("Category", "类别"),
+    "hist.f.stage": ("Activity", "环节"),
+    "hist.f.points": ("Points", "扣分"),
+    "hist.f.reason": ("Reason", "原因"),
+    "hist.f.text": ("Comment (EN)", "英文评语"),
+    "hist.f.text_zh": ("Comment (中文)", "中文评语"),
+    "hist.f.name": ("Name", "姓名"),
+    "hist.f.level": ("Level", "档位"),
+    "hist.f.group_id": ("Group", "分组"),
+    "hist.f.parent_email": ("Parent email", "家长邮箱"),
+    "hist.f.external_id": ("ID", "编号"),
+    "hist.v.scored": ("Scored", "已打分"),
+    "hist.v.not_observed": ("Not observed", "未观察"),
+    "hist.v.not_completed": ("Not completed", "未完成"),
+    "live.on": ("Live", "实时同步"),
+    "live.poll": ("Auto-check (10 s)", "自动检查（每 10 秒）"),
+    "live.off": ("Offline", "连接中断"),
+    "live.connecting": ("Connecting…", "正在连接…"),
+    "live.just_now": ("just now", "刚刚"),
+    "live.ago": ("{n}s ago", "{n} 秒前"),
     "media.original": ("Original", "原题"),
     "media.enlarge": ("Tap to enlarge", "点击放大"),
     "stage.material": ("Activity material", "环节材料"),
@@ -520,9 +740,9 @@ S = {
     "q.trial_max": ("Sub-trial count (e.g. 6 letters; empty = none)", "子项计数上限（如 6 个字母；留空则无）"),
     "th.grade": ("Grade", "年级"),
     "th.course": ("Course", "课程"),
-    "lv.unknown": ("Level not set — choose TK or K", "档位未识别——请选择 TK 或 K"),
+    "lv.unknown": ("This grade is not in the session's interview — choose {levels}", "这个年级不在本场面试里——请选择 {levels}"),
     "msg.unenrolled": ("skipped {n} not enrolled", "跳过未入班 {n} 人"),
-    "msg.unknown_level": ("{n} students need a level (TK/K) — set it in the student table", "{n} 名学生档位未识别，请在学生表中设置 TK/K"),
+    "msg.unknown_level": ("{n} students need a grade — set it in the student table", "{n} 名学生年级未识别，请在学生表中设置"),
 
     # grouping board
     "btn.grouping": ("Grouping board", "现场分组"),
@@ -531,9 +751,18 @@ S = {
     "gb.pool": ("Unassigned", "未分组"),
     "gb.randomize": ("Random assign", "随机分组"),
     "gb.confirm.randomize": (
-        "Randomly re-assign ALL students across the groups? Current grouping will be replaced (TK/K balanced automatically).",
-        "随机重新分配全部学生？当前分组将被打乱（TK/K 自动均衡）。",
+        "Randomly re-assign ALL students? The current grouping is replaced. Each group gets one grade only: children are shuffled within their grade, so groups can differ in size.",
+        "随机重新分配全部学生？当前分组会被替换。每个组只放一个年级：学生在同年级内随机分配，各组人数可以不一样。",
     ),
+    "gb.mixed": ("{name} is {level}, but group {group} already has {other} children. A group holds one grade only.",
+                 "{name} 是 {level}，但 {group} 组里已经有 {other} 的学生。一个组只能放同一个年级。"),
+    "gb.mixed_tag": ("Mixed grades:", "混年级："),
+    "gb.rand_done": ("Random grouping done.", "随机分组完成。"),
+    "gb.rand_part": ("{level} → {groups} ({n} children)", "{level} → {groups}（{n} 人）"),
+    "gb.rand_unknown": ("{n} children have a grade that is not in this interview and were left ungrouped.", "{n} 名学生的年级不在这套面试里，没有分组。"),
+    "gb.rand_empty": ("No children left for: {names}.", "没有分到学生的组：{names}。"),
+    "gb.rand_few": ("There are {grades} grades ({names}) but only {groups} group(s). A group cannot mix grades, so add at least one group per grade first.",
+                    "有 {grades} 个年级（{names}），但只有 {groups} 个组。一个组不能混年级，请先保证每个年级至少有一个组。"),
     "gb.need_group": ("Create at least one group first.", "请先创建至少一个组。"),
     "gb.tap_hint": (
         "Drag the ⠿ handle to move a child between groups, or tap a child and then tap the target group.",
@@ -580,7 +809,9 @@ S = {
 
     # report
     "btn.report": ("Report", "报告"),
-    "report.print": ("Print / Export PDF", "打印 / 导出 PDF"),
+    "report.print": ("Print", "打印"),
+    "report.lang": ("Report language", "报告语言"),
+    "report.save_pdf": ("Save PDF", "保存 PDF"),
     "report.summary_ph": (
         "Teacher's View — concrete, warm, parent-friendly. Describe what you observed, how the child responded to support, and what to practice next.",
         "老师评语——具体、温暖、适合家长阅读。描述观察到的行为、支持后的变化和下一步建议。",
@@ -726,14 +957,66 @@ S = {
     "msg.duplicate_skipped": ("Duplicate skipped", "重复已跳过"),
     "msg.student_removed": ("Student removed", "已移除学生"),
     "msg.group_deleted": ("Group deleted", "组已删除"),
-    "msg.level_err": ("Level must be TK or K", "档位必须是 TK 或 K"),
+    "msg.level_err": ("Grade must be one of: {levels}", "年级必须是：{levels}"),
     "msg.decode_err": ("Could not decode file; use UTF-8 CSV or .xlsx", "无法解码文件；请使用 UTF-8 CSV 或 .xlsx"),
     "msg.import_failed": ("Import failed", "导入失败"),
 }
 
 
+_stage_cache = {"at": 0.0, "map": {}}
+
+
+stage_paper = ContextVar("stage_paper", default=None)  # the interview whose part names this request shows
+
+
+def custom_stage_label(key, zh, paper_id=None):
+    """Name an admin gave a team part (PaperStage.label); cached a few seconds.
+    Looks at the given interview first; without one, uses the name only when every
+    interview that has this part agrees on it."""
+    import time
+
+    if time.time() - _stage_cache["at"] > 5:
+        try:
+            from .db import SessionLocal
+            from .models import PaperStage
+
+            db = SessionLocal()
+            try:
+                m, seen = {}, {}
+                for r in db.query(PaperStage).order_by(PaperStage.id):
+                    pair = (r.label, r.label_zh or r.label) if r.label else None
+                    if pair:
+                        m[(r.paper_id, r.key)] = pair
+                    seen.setdefault(r.key, set()).add(pair)
+                for k, pairs in seen.items():
+                    if len(pairs) == 1 and None not in pairs:
+                        m[k] = next(iter(pairs))
+                _stage_cache.update(at=time.time(), map=m)
+            finally:
+                db.close()
+        except Exception:  # noqa: BLE001 - never break a page over a label
+            _stage_cache["at"] = time.time()
+    paper_id = paper_id or stage_paper.get()
+    pair = _stage_cache["map"].get((paper_id, key)) if paper_id else None
+    if pair is None and (not paper_id or ("stage." + key) not in S):
+        pair = _stage_cache["map"].get(key)
+    if pair is None:
+        return None
+    return pair[1] if zh else pair[0]
+
+
+def forget_stage_labels():
+    _stage_cache["at"] = 0.0
+
+
 def t(key):
     pair = S.get(key)
+    if key.startswith("stage."):
+        custom = custom_stage_label(key[6:], current_lang.get() == "zh")
+        if custom:
+            return custom
+        if pair is None:
+            return key[6:]
     if pair is None:
         return key
     return pair[1] if current_lang.get() == "zh" else pair[0]

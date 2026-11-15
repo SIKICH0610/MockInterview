@@ -69,17 +69,30 @@
   <input type="hidden" name="back" value="{{ back }}">
   {% for m in media %}
   <div class="me-row">
-    <div class="me-thumb">{{ media_item(m) }}</div>
+    <div class="me-thumb">
+      {% if m.is_pdf %}
+      <a class="me-pdf" href="/wb/media/{{ m.id }}" target="_blank" rel="noopener" title="{{ m.filename }}">
+        <span class="qmedia-pdf-tag">PDF</span><span class="me-pdf-open">{{ t('media.open_pdf') }}</span>
+      </a>
+      {% else %}
+      <button type="button" class="qmedia-img" data-full="/wb/media/{{ m.id }}" data-caption="{{ m.caption or '' }}" title="{{ t('media.enlarge') }}">
+        <img src="/wb/media/{{ m.id }}" alt="{{ m.caption or m.filename }}" loading="lazy">
+      </button>
+      {% endif %}
+    </div>
     <div class="me-fields">
       <input type="hidden" name="ids" value="{{ m.id }}">
-      <label>{{ t('media.caption') }}
-        <textarea name="caption_{{ m.id }}" rows="2" placeholder="{{ t('media.caption_ph') }}">{{ m.caption or '' }}</textarea></label>
       <div class="me-bar">
         <label class="me-order">{{ t('media.order') }} <input type="number" name="sort_{{ m.id }}" value="{{ loop.index }}" min="1" max="999"></label>
-        <span class="muted small me-name">{{ m.filename }}</span>
+        <span class="me-name" title="{{ m.filename }}">{{ m.filename }}</span>
         <button class="btn btn-danger btn-sm" type="submit" formaction="/admin/media/{{ m.id }}/delete"
                 onclick="return confirm({{ t('bank.media_confirm') | tojson }})">{{ t('btn.remove') }}</button>
       </div>
+      {% if m.is_pdf %}
+      <div class="muted small me-note">{{ t('media.pdf_note') }}</div>
+      {% else %}
+      <textarea name="caption_{{ m.id }}" rows="2" aria-label="{{ t('media.caption') }}" placeholder="{{ t('media.caption') }}：{{ t('media.caption_ph') }}">{{ m.caption or '' }}</textarea>
+      {% endif %}
     </div>
   </div>
   {% endfor %}
@@ -127,7 +140,7 @@
 {% macro qcard(st, q, rec, teacher_names, show_name=True, teacher_id_ctx=0) %}
 {% set r = rec if rec else None %}
 <div class="qcard {{ 'st-' + r.status if r and r.status }}"
-     data-student="{{ st.id }}" data-code="{{ q.code }}"
+     data-student="{{ st.id }}" data-code="{{ q.code }}" data-live-key="q{{ st.id }}-{{ q.code }}"
      data-rev="{{ r.rev if r else 0 }}" data-status="{{ r.status if r and r.status else '' }}">
   {% if show_name %}
   <div class="qcard-head">
@@ -138,6 +151,7 @@
   {% else %}
   <div class="qcard-head slim">
     <span class="save-ind"></span>
+    <button type="button" class="hist-btn" data-student="{{ st.id }}" data-kind="score" data-ref="{{ q.code }}" title="{{ t('hist.btn') }}" aria-label="{{ t('hist.btn') }}"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v4h4"/><path d="M12 7v5l3 2"/></svg></button>
   </div>
   {% endif %}
   <div class="conflict-bar"></div>

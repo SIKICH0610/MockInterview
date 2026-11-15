@@ -74,7 +74,21 @@ async def auth_middleware(request: Request, call_next):
         return RedirectResponse(f"/login?next={quote(nxt)}", status_code=303)
     if path.startswith("/admin") and teacher.role != "admin":
         return RedirectResponse("/wb?msg=admin_only", status_code=303)
-    return await call_next(request)
+    from .audit import ACTOR
+
+    via = ""
+    if request.state.admin_return and admin_token:
+        db = SessionLocal()
+        try:
+            at = db.get(Teacher, parse_token(admin_token))
+            via = at.name if at else ""
+        finally:
+            db.close()
+    tok = ACTOR.set((teacher.id, teacher.name, via, path))
+    try:
+        return await call_next(request)
+    finally:
+        ACTOR.reset(tok)
 
 
 @app.get("/lang/{code}")
@@ -113,6 +127,10 @@ def startup():
 def _startup_setup():
     upgrade_schema(engine)
     Base.metadata.create_all(bind=engine)
+    from . import audit, live
+
+    live.start()
+    audit.start()
     db = SessionLocal()
     try:
         seed_questions(db)
@@ -139,13 +157,19 @@ def _startup_setup():
                 os.environ.get("MI_INITIAL_ADMIN_PASSWORD") or "admin123"
             )
             db.commit()
+        from .perm import ensure_owner
+
+        ensure_owner(db)
+        db.commit()
     finally:
         db.close()
 
 
 @app.get("/")
 def home(request: Request, db: Session = Depends(get_db)):
-    sessions = db.query(AssessSession).order_by(AssessSession.date.desc()).all()
+    from .perm import visible_sessions
+
+    sessions = visible_sessions(db, request.state.teacher)  # teachers: only sessions they are assigned to
     teachers = db.query(Teacher).filter_by(active=True).all()
     return templates.TemplateResponse(
         request,
@@ -171,7 +195,10 @@ def login_post(
     next: str = Form("/"),
     db: Session = Depends(get_db),
 ):
-    teacher = db.query(Teacher).filter(Teacher.name == name.strip()).first()
+    from sqlalchemy import func
+
+    typed = " ".join(name.split())
+    teacher = db.query(Teacher).filter(func.lower(Teacher.name) == typed.lower()).first()
     if teacher and teacher.active and verify_password(password, teacher.password_hash or ""):
         target = next if next.startswith("/") else "/"
         resp = RedirectResponse(target, status_code=303)
@@ -213,6 +240,12 @@ def switch_account(tid: int, request: Request, db: Session = Depends(get_db)):
 
     if not target or not target.active or not (is_admin or keep_token):
         return RedirectResponse("/", status_code=303)
+    # the admin really behind this request (when impersonating a teacher, the one to return to)
+    from .perm import can_switch_into
+
+    real = me if is_admin else db.get(Teacher, parse_token(keep_token))
+    if not can_switch_into(real, target):  # only the owner may open another admin's account
+        return RedirectResponse("/admin/teachers?msg=" + quote(t("teachers.no_manage_admin")) if is_admin else "/", status_code=303)
 
     resp = RedirectResponse("/" if target.role == "admin" else "/wb", status_code=303)
     resp.set_cookie("auth", make_token(target.id), max_age=TOKEN_TTL, **AUTH_COOKIE)

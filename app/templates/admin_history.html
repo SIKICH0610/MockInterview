@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% block title %}{{ t('hist.title') }} · {{ s.label }}{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <div class="kicker"><a href="/admin/sessions/{{ s.id }}">{{ t('nav.admin') | upper }} · {{ s.label | upper }}</a></div>
+    <h1>{{ t('hist.title') }} <span class="muted-h">{{ s.date }}</span></h1>
+  </div>
+  <div class="head-actions">
+    <a class="btn btn-ghost" href="/admin/sessions/{{ s.id }}/history.csv?{{ request.query_params }}">{{ t('hist.csv') }}</a>
+    <a class="btn btn-ghost" href="/wb/review?session_id={{ s.id }}">{{ t('review.title') }}</a>
+  </div>
+</div>
+<p class="stage-hint">{{ t('hist.hint') }}</p>
+
+<form method="get" class="card bank-filter">
+  <label>{{ t('hist.who') }}
+    <select name="actor">
+      <option value="">{{ t('bank.all') }}</option>
+      {% for aid, name in actors %}<option value="{{ aid }}" {{ 'selected' if f.actor == aid }}>{{ name }}</option>{% endfor %}
+    </select>
+  </label>
+  <label>{{ t('label.name') }}
+    <select name="student">
+      <option value="">{{ t('bank.all') }}</option>
+      {% for st in students %}<option value="{{ st.id }}" {{ 'selected' if f.student == st.id }}>{{ st.name }}</option>{% endfor %}
+    </select>
+  </label>
+  <label>{{ t('hist.what') }}
+    <select name="kind">
+      <option value="">{{ t('bank.all') }}</option>
+      {% for k in kinds %}<option value="{{ k }}" {{ 'selected' if f.kind == k }}>{{ t('hist.kind.' ~ k) }}</option>{% endfor %}
+    </select>
+  </label>
+  <div class="bank-filter-btns">
+    <button class="btn" type="submit">{{ t('bank.filter') }}</button>
+    <a class="btn btn-ghost" href="/admin/sessions/{{ s.id }}/history">{{ t('bank.reset') }}</a>
+  </div>
+</form>
+
+<div class="card">
+  <div class="card-head">{{ entries | length }} {{ t('hist.entries') }}{% if entries | length >= limit %} <span class="muted small">({{ t('hist.latest_n').format(n=limit) }})</span>{% endif %}</div>
+  {% set show_child = True %}
+  {% include "_history_list.html" %}
+</div>
+{% endblock %}

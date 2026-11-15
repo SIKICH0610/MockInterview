@@ -14,7 +14,7 @@
   <form class="inline-form" method="post" action="/admin/teachers/add">
     <label>{{ t('label.name') }} <input type="text" name="name" required></label>
     <label>{{ t('label.role') }}
-      <select name="role"><option value="teacher">{{ t('role.teacher') }}</option><option value="admin">{{ t('role.admin') }}</option></select>
+      <select name="role"><option value="teacher">{{ t('role.teacher') }}</option>{% if i_am_owner %}<option value="admin">{{ t('role.admin') }}</option>{% endif %}</select>
     </label>
     <button class="btn" type="submit">{{ t('btn.add') }}</button>
   </form>
@@ -22,35 +22,53 @@
 
 <div class="card">
   <div class="card-head"><span class="sec-num">02</span> {{ t('admin.all_teachers') }}</div>
+  <p class="muted small te-perm-note">{% if i_am_owner %}{{ t('teachers.perm_note_owner') }}{% else %}{{ t('teachers.perm_note_admin').format(owner=(teachers | selectattr('is_owner') | map(attribute='name') | first) or 'Admin') }}{% endif %}</p>
   {% if teachers %}
-  <table class="table">
-    <tr><th>{{ t('label.name') }}</th><th>{{ t('label.role') }}</th><th>{{ t('th.status') }}</th><th>{{ t('login.password') }}</th><th></th></tr>
+  <table class="table te-table">
+    <tr class="te-head"><th>{{ t('label.name') }}</th><th>{{ t('label.role') }}</th><th>{{ t('th.status') }}</th><th>{{ t('login.password') }}</th><th></th></tr>
     {% for te in teachers %}
     <tr>
-      <td>{{ te.name }}</td>
-      <td>{{ t('role.admin') if te.role == 'admin' else t('role.teacher') }}</td>
-      <td>{{ t('status.active') if te.active else t('status.inactive') }}</td>
+      {% set can = te.id in manageable %}
       <td>
+        {% if can %}
+        <form method="post" action="/admin/teachers/{{ te.id }}/rename" class="rename-form">
+          <input type="text" name="name" value="{{ te.name }}" maxlength="80" required aria-label="{{ t('label.name') }}">
+          <button class="btn btn-ghost btn-sm" type="submit">{{ t('teachers.rename') }}</button>
+        </form>
+        {% else %}<b class="te-name-locked">{{ te.name }}</b>{% endif %}
+      </td>
+      <td class="te-tag">{{ t('role.admin') if te.role == 'admin' else t('role.teacher') }}{% if te.is_owner %} <span class="bank-tag te-owner">{{ t('teachers.owner') }}</span>{% endif %}</td>
+      <td class="te-tag">{{ t('status.active') if te.active else t('status.inactive') }}</td>
+      <td>
+        {% if not can %}<span class="pw-state {{ 'ok' if te.password_hash }}">{{ t('teachers.has_pw') if te.password_hash else t('teachers.no_pw') }}</span>{% else %}
         <form method="post" action="/admin/teachers/{{ te.id }}/password" class="pw-form">
           <span class="pw-state {{ 'ok' if te.password_hash }}">{{ t('teachers.has_pw') if te.password_hash else t('teachers.no_pw') }}</span>
           <input type="password" name="password" placeholder="{{ t('placeholder.new_pw') }}" autocomplete="new-password" required>
           <button class="btn btn-ghost btn-sm" type="submit">{{ t('teachers.set_pw') }}</button>
         </form>
+        {% endif %}
       </td>
-      <td class="t-actions">
-        {% if te.active and te.id != request.state.teacher.id %}
-        <form method="post" action="/switch/{{ te.id }}" class="inline">
-          <button class="btn btn-sm" type="submit">{{ t('teachers.impersonate') }}</button>
-        </form>
-        {% endif %}
-        {% if te.id != request.state.teacher.id %}
-        <form method="post" action="/admin/teachers/{{ te.id }}/role" class="inline">
-          <button class="btn btn-ghost btn-sm" type="submit">{{ t('teachers.make_teacher') if te.role == 'admin' else t('teachers.make_admin') }}</button>
-        </form>
-        {% endif %}
-        <form method="post" action="/admin/teachers/{{ te.id }}/toggle" class="inline">
-          <button class="btn btn-ghost btn-sm" type="submit">{{ t('btn.deactivate') if te.active else t('btn.activate') }}</button>
-        </form>
+      <td class="te-actions-cell">
+        {% set me = te.id == request.state.teacher.id %}
+        <div class="te-actions">
+          <div>{% if te.active and not me and te.id in switchable %}
+            <form method="post" action="/switch/{{ te.id }}"><button class="btn btn-sm" type="submit">{{ t('teachers.impersonate') }}</button></form>
+          {% endif %}</div>
+          <div>{% if not me and i_am_owner and not te.is_owner %}
+            <form method="post" action="/admin/teachers/{{ te.id }}/role"><button class="btn btn-ghost btn-sm" type="submit">{{ t('teachers.make_teacher') if te.role == 'admin' else t('teachers.make_admin') }}</button></form>
+          {% endif %}</div>
+          <div>{% if can and not te.is_owner %}
+            <form method="post" action="/admin/teachers/{{ te.id }}/toggle"><button class="btn btn-ghost btn-sm" type="submit">{{ t('btn.deactivate') if te.active else t('btn.activate') }}</button></form>
+          {% endif %}</div>
+          <div>{% if not me and can and not te.is_owner %}
+            <form method="post" action="/admin/teachers/{{ te.id }}/delete"
+                  onsubmit="return confirm({{ t('teachers.delete_confirm').format(name=te.name) | tojson }})">
+              <button class="btn btn-ghost btn-sm te-del" type="submit" title="{{ t('teachers.delete') }}" aria-label="{{ t('teachers.delete') }} {{ te.name }}">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/></svg>
+              </button>
+            </form>
+          {% endif %}</div>
+        </div>
       </td>
     </tr>
     {% endfor %}

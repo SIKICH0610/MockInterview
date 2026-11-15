@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% from "_macros.html" import wbnav %}
 {% block title %}{{ t('review.title') }} · {{ s.label }}{% endblock %}
-{% block bodyattrs %}data-teacher="{{ teacher.id }}" data-page="review"{% endblock %}
+{% block bodyattrs %}data-teacher="{{ teacher.id }}" data-page="review" data-live-session="{{ s.id }}"{% endblock %}
 {% block content %}
 <div class="wb-head">
   <div>
@@ -18,6 +18,7 @@
   <button type="button" class="btn" id="batch-archive" data-session="{{ s.id }}"
           data-label="{{ t('review.archive_btn') }}" data-busy="{{ t('review.archiving') }}">{{ t('review.archive_btn') }}</button>
   <a class="btn btn-ghost" href="/admin/sessions/{{ s.id }}/email">{{ t('btn.send_reports') }}</a>
+  <a class="btn btn-ghost" href="/admin/sessions/{{ s.id }}/history">{{ t('hist.title') }}</a>
   {% if archives %}
   <span class="archive-list">
     <b>{{ t('review.archives') }}:</b>
@@ -29,8 +30,8 @@
 </div>
 {% endif %}
 
-{% macro sep_cell(st) %}
-  {% set o = sep.get(st.id) %}
+{% macro sep_cell(st, part) %}
+  {% set o = sep.get((st.id, part)) %}
   {% if o and o.response == 'independent' %}<span class="mx-sep sp-ok" title="{{ t('sep.cell.independent') }}">&#10003;</span>
   {% elif o and o.response == 'brief' %}<span class="mx-sep sp-mid" title="{{ t('sep.cell.brief') }}">&#177;</span>
   {% elif o and o.response == 'support' %}<span class="mx-sep sp-low" title="{{ t('sep.cell.support') }}">!</span>
@@ -50,10 +51,7 @@
       <tr>
         <th class="mx-name">{{ t('label.name') }}</th>
         {% for code in codes %}<th>{{ code }}</th>{% endfor %}
-        <th class="mx-stage-h">{{ t('stage.Separation') }}</th>
-        <th class="mx-stage-h">{{ t('stage.Self Introduction') }}</th>
-        <th class="mx-stage-h">{{ t('stage.Story Time') }}</th>
-        <th class="mx-stage-h">{{ t('stage.Cutting & Drawing') }}</th>
+        {% for part in parts %}<th class="mx-stage-h">{{ t('stage.' ~ part.key) }}</th>{% endfor %}
         <th>{{ t('review.events') }}</th>
         <th>{{ t('review.progress') }}</th>
         <th>{{ t('review.status') }}</th>
@@ -61,7 +59,7 @@
       </tr>
       {% for st in members %}
       {% set rv = reviews.get(st.id) %}
-      <tr class="mx-row" data-student="{{ st.id }}">
+      <tr class="mx-row" data-student="{{ st.id }}" data-live-key="r{{ st.id }}">
         <td class="mx-name">
           <a href="/wb/student/{{ st.id }}">{{ st.name }}</a>
           <span class="lv-badge lv-{{ st.level }}">{{ st.level }}</span>
@@ -84,14 +82,20 @@
         </td>
         {% endfor %}
         {% set gq = '&group_id=' ~ st.group_id if st.group_id else '' %}
-        <td class="mx-cell"><a href="{{ stage_href(st, gq, 'Separation') }}">{{ sep_cell(st) }}</a></td>
-        {% for stg in ['Self Introduction', 'Story Time', 'Cutting & Drawing'] %}
-        <td class="mx-cell mx-num"><a href="{{ stage_href(st, gq, stg) }}">{{ stage_counts.get((st.id, stg), 0) or '·' }}</a></td>
+        {% for part in parts %}
+        {% if part.kind == 'separation' %}
+        <td class="mx-cell"><a href="{{ stage_href(st, gq, part.key) }}">{{ sep_cell(st, part.key) }}</a></td>
+        {% else %}
+        <td class="mx-cell mx-num"><a href="{{ stage_href(st, gq, part.key) }}">{{ stage_counts.get((st.id, part.key), 0) or '·' }}</a></td>
+        {% endif %}
         {% endfor %}
         <td class="mx-cell mx-num"><a href="/wb/student/{{ st.id }}#events-card">{{ ev_counts.get(st.id, 0) or '·' }}</a></td>
         <td class="mx-cell mx-num"><b>{{ progress[st.id] }}</b>/{{ total }}</td>
         <td class="mx-cell">
           <span class="status-chip stc-{{ status[st.id] }}">{{ t('st.' ~ status[st.id]) }}</span>
+          {% if changed_after.get(st.id) %}{% set ca = changed_after[st.id] %}
+          <a class="hist-flag" href="/wb/student/{{ st.id }}#history" title="{{ t('hist.flag_tip').format(n=ca[0], when=ca[1].strftime('%m-%d %H:%M')) }}">{{ t('hist.flag') }}</a>
+          {% endif %}
         </td>
         <td class="mx-cell mx-action">
           <button type="button" class="btn btn-sm review-btn {{ 'btn-ghost' if rv else '' }}">

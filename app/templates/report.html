@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% block title %}{{ st.name }} · Report{% endblock %}
-{% block bodyattrs %}data-teacher="{{ teacher.id }}" data-student="{{ st.id }}" data-page="report"{% endblock %}
+{% block bodyattrs %}data-teacher="{{ teacher.id }}" data-student="{{ st.id }}" data-page="report"{% if request.query_params.get('for') == 'pdf' %} data-for="pdf"{% endif %}{% endblock %}
 
 {% macro statbar(d, max_label, avg_cap) %}
 <div class="rp-statbar">
@@ -27,25 +27,74 @@
 {% endif %}
 {% endmacro %}
 
+{% macro practice_page(rows, subtitle) %}
+{% if rows | selectattr('0.key_ability') | list or rows | selectattr('0.practice') | list or rows | selectattr('0.home_game') | list %}
+  <section class="rp-page rp-hp">
+    {{ pagehead(R.hp_title, subtitle) }}
+    <table class="rp-table rp-hp-table">
+      <tr><th>{{ R.hp_th_key }}</th><th>{{ R.hp_th_practice }}</th><th>{{ R.hp_th_game }}</th></tr>
+      {% for q, r in rows %}
+      {% set focus = r and ((r.status == 'scored' and r.academic is not none and r.academic < 2) or r.status == 'not_completed') %}
+      <tr class="{{ 'rp-hp-focus' if focus }}">
+        <td>
+          <div class="rp-hp-task"><b class="qcode">{{ q.code }}</b> {{ q.title }}{% if focus %} <span class="rp-tag rp-tag-mid">{{ R.hp_focus }}</span>{% endif %}</div>
+          {% if q.key_ability %}<div class="rp-hp-key">{{ q.key_ability }}</div>{% endif %}
+        </td>
+        <td>
+          {% if q.practice %}<div class="rp-hp-text">{{ q.practice }}</div>{% endif %}
+          {% if q.practice_answer %}<div class="rp-hp-check"><b>{{ R.hp_check }}</b> {{ q.practice_answer }}</div>{% endif %}
+        </td>
+        <td>
+          {% if q.home_game %}
+          {% set lines = q.home_game.split('\n') %}
+          <div class="rp-hp-game">{{ lines[0] }}</div>
+          <div class="rp-hp-text">{{ lines[1:] | join('\n') }}</div>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </table>
+    <p class="rp-foot">{{ R.hp_foot }}</p>
+  </section>
+{% endif %}
+{% endmacro %}
+
 {% block content %}
+{% if request.query_params.get('for') != 'pdf' %}
+{# Browser printing: zero page margin makes the browser drop its own header/footer
+   (date, title, URL); the white space moves into each report page instead. #}
+<style>@page { size: letter; margin: 0; }</style>
+{% endif %}
 <div class="report-toolbar no-print">
-  <a class="btn btn-ghost" href="/wb/review?session_id={{ s.id }}">&larr; {{ t('btn.review') }}</a>
-  <div class="head-actions">
+  <div class="rt-left">
+    <a class="btn btn-ghost" href="/wb/review?session_id={{ s.id }}">&larr; {{ t('btn.review') }}</a>
     {% if review %}<span class="status-chip stc-reviewed">{{ t('st.reviewed') }} · {{ teacher_names.get(review.teacher_id, '') }}</span>
     {% else %}<span class="status-chip stc-in_progress">{{ t('st.in_progress') }}</span>{% endif %}
-    <span class="rlang-toggle">
-      <a class="rl-chip {{ 'on' if rlang == 'en' }}" href="{{ lang_urls['en'] }}">EN</a><a class="rl-chip {{ 'on' if rlang == 'zh' }}" href="{{ lang_urls['zh'] }}">中文</a>
-    </span>
-    <select id="cmp-select" title="{{ t('report.cmp.title') }}">
-      <option value="session" {{ 'selected' if cmp_mode == 'session' }}>{{ t('report.cmp.session') }}</option>
-      <option value="paper" {{ 'selected' if cmp_mode == 'paper' }}>{{ t('report.cmp.paper') }}</option>
-      <option value="range" {{ 'selected' if cmp_mode == 'range' }}>{{ t('report.cmp.range') }}</option>
-    </select>
-    <input type="date" id="cmp-from" value="{{ cmp_from }}" style="display:{{ 'inline-block' if cmp_mode == 'range' else 'none' }}">
-    <input type="date" id="cmp-to" value="{{ cmp_to }}" style="display:{{ 'inline-block' if cmp_mode == 'range' else 'none' }}">
+  </div>
+  <div class="rt-right">
+    <div class="rt-group">
+      <span class="rt-label">{{ t('report.lang') }}</span>
+      <span class="rt-seg rlang-toggle">
+        <a class="rl-chip {{ 'on' if rlang == 'en' }}" href="{{ lang_urls['en'] }}">EN</a><a class="rl-chip {{ 'on' if rlang == 'zh' }}" href="{{ lang_urls['zh'] }}">中文</a>
+      </span>
+    </div>
+    <div class="rt-group">
+      <select id="cmp-select" title="{{ t('report.cmp.title') }}" aria-label="{{ t('report.cmp.title') }}">
+        <option value="session" {{ 'selected' if cmp_mode == 'session' }}>{{ t('report.cmp.session') }}</option>
+        <option value="paper" {{ 'selected' if cmp_mode == 'paper' }}>{{ t('report.cmp.paper') }}</option>
+        <option value="range" {{ 'selected' if cmp_mode == 'range' }}>{{ t('report.cmp.range') }}</option>
+      </select>
+      <input type="date" id="cmp-from" value="{{ cmp_from }}" style="display:{{ 'inline-block' if cmp_mode == 'range' else 'none' }}">
+      <input type="date" id="cmp-to" value="{{ cmp_to }}" style="display:{{ 'inline-block' if cmp_mode == 'range' else 'none' }}">
+    </div>
+    <span class="rt-sep" aria-hidden="true"></span>
     <button type="button" class="btn btn-ghost" id="print-btn">{{ t('report.print') }}</button>
-    <button type="button" class="btn pdf-btn" data-rlang="en" data-label="PDF · EN" data-busy="{{ t('report.pdf_saving') }}">PDF · EN</button>
-    <button type="button" class="btn pdf-btn" data-rlang="zh" data-label="PDF · 中文" data-busy="{{ t('report.pdf_saving') }}">PDF · 中文</button>
+    <div class="rt-group">
+      <span class="rt-label">{{ t('report.save_pdf') }}</span>
+      <span class="rt-seg rt-seg-primary">
+        <button type="button" class="pdf-btn" data-rlang="en" data-label="EN" data-busy="{{ t('report.pdf_saving') }}" title="{{ t('report.save_pdf') }} · EN">EN</button><button type="button" class="pdf-btn" data-rlang="zh" data-label="中文" data-busy="{{ t('report.pdf_saving') }}" title="{{ t('report.save_pdf') }} · 中文">中文</button>
+      </span>
+    </div>
   </div>
 </div>
 
@@ -57,31 +106,52 @@
       <span class="brand-main">Think Academy</span>
       <span class="brand-chip">SILICON VALLEY</span>
     </div>
-    <h1 class="rp-cover-title">{{ R.cover_title.format(lv=st.level) | safe }}</h1>
-    <div class="rp-cover-sub">{{ R.cover_sub }}</div>
-
-    <div class="rp-cover-student">
-      <div class="rp-cover-label">{{ R.student }}</div>
-      <div class="rp-cover-name">{{ st.name }}</div>
-      <table class="rp-cover-info">
-        <tr><td>{{ R.level }}</td><td><span class="lv-badge lv-{{ st.level }}">{{ st.level }}</span></td></tr>
-        <tr><td>{{ R.session }}</td><td>{{ s.date }} · {{ s.label }}</td></tr>
-        {% if st.external_id %}<tr><td>{{ R.student_id }}</td><td>{{ st.external_id }}</td></tr>{% endif %}
-        {% if st.group %}<tr><td>{{ R.group }}</td><td>{{ st.group.name }}</td></tr>{% endif %}
-        {% if involved %}<tr><td>{{ R.assessed_by }}</td><td>{{ involved | join(', ') }}</td></tr>{% endif %}
-        <tr><td>{{ R.report_date }}</td><td>{{ today }}</td></tr>
-      </table>
+    <div class="rp-cover-head">
+      <h1 class="rp-cover-title">{{ R.cover_title.format(lv=st.level) | safe }}</h1>
+      <div class="rp-cover-sub">{{ R.cover_sub }}</div>
     </div>
 
-    <div class="rp-bubbles-cap">{{ R.bubbles_cap }}</div>
-    <div class="rp-bubbles">
-      {% for a in abilities %}
-      <span class="rp-bubble b{{ loop.index }} {{ 'rp-bubble-top' if a.is_top }}">{% if a.is_top %}★ {% endif %}{{ a.disp }}</span>
-      {% endfor %}
+    <div class="rp-cover-row">
+      <div class="rp-cover-student">
+        <div class="rp-cover-label">{{ R.student }}</div>
+        <div class="rp-cover-name">{{ st.name }}</div>
+        <table class="rp-cover-info">
+          <tr><td>{{ R.level }}</td><td><span class="lv-badge lv-{{ st.level }}">{{ st.level }}</span></td></tr>
+          <tr><td>{{ R.session }}</td><td>{{ s.date }} · {{ s.label }}</td></tr>
+          {% if st.external_id %}<tr><td>{{ R.student_id }}</td><td>{{ st.external_id }}</td></tr>{% endif %}
+          {% if st.group %}<tr><td>{{ R.group }}</td><td>{{ st.group.name }}</td></tr>{% endif %}
+          {% if involved %}<tr><td>{{ R.assessed_by }}</td><td>{{ involved | join(', ') }}</td></tr>{% endif %}
+          <tr><td>{{ R.report_date }}</td><td>{{ today }}</td></tr>
+        </table>
+      </div>
+      <img class="rp-mascot rp-mascot-cover" src="{{ asset_url('mascot.png') }}" alt="" width="348" height="394">
     </div>
-    {% if abilities | selectattr('is_top') | list %}
-    <div class="rp-bubbles-star">{{ R.bubbles_star }}</div>
-    {% endif %}
+
+    <div class="rp-cover-abil">
+      <div class="rp-bubbles-cap">{{ R.bubbles_cap }}</div>
+      <div class="rp-bubbles">
+        {% for a in abilities %}
+        <span class="rp-bubble b{{ loop.index }} {{ 'rp-bubble-top' if a.is_top }}">{% if a.is_top %}★ {% endif %}{{ a.disp }}</span>
+        {% endfor %}
+      </div>
+      {% if abilities | selectattr('is_top') | list %}
+      <div class="rp-bubbles-star">{{ R.bubbles_star }}</div>
+      {% endif %}
+    </div>
+
+    <div class="rp-cover-inside">
+      <div class="rp-bubbles-cap">{{ R.inside_cap }}</div>
+      <div class="rp-inside-grid">
+        {% for title in [R.ov_title, R.ab_title, R.task_title, R.grp_only_title, R.sel_page_title, R.hp_title] %}
+        <div class="rp-inside-item">
+          <span class="rp-inside-n">{{ '%02d' % loop.index }}</span>
+          <div><div class="rp-inside-t">{{ title }}</div><div class="rp-inside-d">{{ R.inside_notes[loop.index0] }}</div></div>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+
+    <div class="rp-cover-foot">{{ R.back_line }} · www.thethinkacademy.com</div>
   </section>
 
   <!-- ========== 01 OVERVIEW ========== -->
@@ -224,8 +294,13 @@
     </table>
 
     </div>
+  </section>
+
+  <!-- ========== 03b TASK-BY-TASK · ENGLISH ========== -->
+  <section class="rp-page">
+    {{ pagehead(R.task_title, R.task_eng_sub) }}
     <div class="rp-keep">
-    <div class="rp-dim-head" style="margin-top:18px">{{ R.sec_eng }}</div>
+    <div class="rp-dim-head">{{ R.sec_eng }}</div>
     {{ statbar(dims.eng, R.max_fmt.format(eng_max), cmp_label) }}
     {{ analysisbox(analysis.eng) }}
     <table class="rp-table">
@@ -253,18 +328,20 @@
 
   <!-- ========== 04 GROUP ACTIVITIES + SEL ========== -->
   <section class="rp-page">
-    {{ pagehead(R.grp_title, R.grp_sub) }}
+    {{ pagehead(R.grp_only_title, R.grp_sub) }}
     <p class="rp-explain">{{ R.grp_explain }}</p>
     {{ analysisbox(analysis.group) }}
 
     <div class="rp-stage-grid">
+      {% if sep_stage %}
       <div class="rp-stage">
-        <div class="rp-stage-head">{{ stage_disp.get('Separation', 'Separation') }}</div>
+        <div class="rp-stage-head">{{ stage_disp.get(sep_stage, sep_stage) }}</div>
         {% if sep_label %}
         <div class="rp-stage-val">{{ sep_label }}</div>
         {% if sep and sep.note %}<div class="muted small">{{ sep.note }}</div>{% endif %}
         {% else %}<div class="rp-no">{{ R.not_recorded }}</div>{% endif %}
       </div>
+      {% endif %}
       {% for stage, o in gen.items() %}
       <div class="rp-stage">
         <div class="rp-stage-head">{{ stage_disp.get(stage, stage) }}</div>
@@ -283,22 +360,22 @@
       {% endfor %}
     </div>
 
-    {% if stage_dim_values.get('Story Time') %}
-    <div class="rp-dim-head" style="margin-top:14px">{{ R.circle_overall }}</div>
+    {% if story_stage and stage_dim_values.get(story_stage) %}
+    <div class="rp-dim-head" style="margin-top:14px">{{ R.circle_overall.format(stage=stage_disp.get(story_stage, story_stage)) }}</div>
     <div class="rp-dims rp-dims-row">
-      {% for label, value in stage_dim_values['Story Time'] %}
+      {% for label, value in stage_dim_values[story_stage] %}
       <div class="rp-dim-line"><span class="rp-dim-k">{{ label }}</span><b>{{ value }}</b></div>
       {% endfor %}
     </div>
     {% endif %}
 
     {% if circle %}
-    <div class="rp-dim-head" style="margin-top:16px">{{ R.circle_story }}</div>
+    <div class="rp-dim-head" style="margin-top:16px">{{ R.circle_story.format(stage=stage_disp.get(story_stage, story_stage)) }}</div>
     <table class="rp-table">
       <tr><th>{{ R.th_prompt }}</th><th>{{ R.th_response }}</th><th>{{ R.th_said }}</th></tr>
       {% for o in circle %}
       <tr>
-        <td class="muted small">{% if o.prompt_index %}P{{ o.prompt_index }} · {{ prompts[o.prompt_index - 1] }}{% endif %}</td>
+        <td class="muted small">{% if o.prompt_index %}P{{ o.prompt_index }}{% if o.prompt_index <= prompts | length %} · {{ prompts[o.prompt_index - 1] }}{% endif %}{% endif %}</td>
         <td><span class="rp-tag {{ 'rp-tag-good' if o.response == 'independent' else ('rp-tag-mid' if o.response == 'prompted') }}">
           {% if o.response == 'independent' %}{{ R.circle_indep }}{% elif o.response == 'prompted' %}{{ R.circle_prompted }}{% else %}{{ R.circle_none }}{% endif %}</span></td>
         <td class="muted small">{{ o.note }}</td>
@@ -307,8 +384,12 @@
     </table>
     <p class="rp-foot">{{ R.circle_foot }}</p>
     {% endif %}
+  </section>
 
-    <div class="rp-dim-head" style="margin-top:16px">{{ R.sel_head }}</div>
+  <!-- ========== 04b SEL & CLASSROOM SKILLS ========== -->
+  <section class="rp-page">
+    {{ pagehead(R.sel_page_title, R.sel_page_sub) }}
+    <div class="rp-dim-head">{{ R.sel_head }}</div>
     {{ statbar(dims.sel, R.max_fmt.format(50), cmp_label) }}
     <div class="rp-dim-head" style="margin-top:10px">{{ R.cs_head }}</div>
     {{ statbar(dims.cs, R.max_fmt.format(50), cmp_label) }}
@@ -333,8 +414,13 @@
     <p class="rp-foot">{{ R.grp_foot }}</p>
   </section>
 
+  <!-- ========== 05 KEY ABILITIES & HOME PRACTICE ========== -->
+  {{ practice_page(math_rows, R.hp_sub_math) }}
+  {{ practice_page(eng_rows, R.hp_sub_eng) }}
+
   <!-- ========== BACK PAGE ========== -->
   <section class="rp-page rp-back">
+    <img class="rp-mascot rp-mascot-back" src="{{ asset_url('mascot.png') }}" alt="" width="348" height="394">
     <div class="rp-back-brand">
       <span class="brand-main" style="font-size:26px">Think Academy</span>
       <span class="brand-chip">SILICON VALLEY</span>

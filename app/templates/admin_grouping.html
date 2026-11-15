@@ -39,7 +39,7 @@
       <div class="gb-chip" data-student="{{ st.id }}">
         <span class="gb-handle">&#10303;</span>
         <span class="gb-chip-name">{{ st.name }}</span>
-        <span class="lv-badge {{ 'lv-' + st.level if st.level in ('TK', 'K') else 'lv-unknown' }}">{{ st.level }}</span>
+        <span class="lv-badge {{ 'lv-' + st.level if st.level in levels else 'lv-unknown' }}">{{ st.level }}</span>
       </div>
       {% endfor %}
     </div>
@@ -48,7 +48,7 @@
   {% for g in groups %}
   <div class="gb-col" data-group="{{ g.id }}">
     <div class="gb-col-head">
-      <span class="gb-col-name">{{ g.name }}</span>
+      <span class="gb-col-name">{{ g.name }} <span class="gb-grade" data-mixed="{{ t('gb.mixed_tag') }}"></span></span>
       <span class="gb-count">{{ g.students | length }}</span>
     </div>
     <select class="group-teacher gb-teacher" data-group="{{ g.id }}">
@@ -62,7 +62,7 @@
       <div class="gb-chip" data-student="{{ st.id }}">
         <span class="gb-handle">&#10303;</span>
         <span class="gb-chip-name">{{ st.name }}</span>
-        <span class="lv-badge {{ 'lv-' + st.level if st.level in ('TK', 'K') else 'lv-unknown' }}">{{ st.level }}</span>
+        <span class="lv-badge {{ 'lv-' + st.level if st.level in levels else 'lv-unknown' }}">{{ st.level }}</span>
       </div>
       {% endfor %}
     </div>

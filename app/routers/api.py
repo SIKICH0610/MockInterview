@@ -5,7 +5,7 @@ from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 
 from ..db import get_db
-from ..models import Event, Group, ItemRecord, Review, StageObs, Student, Summary, Teacher
+from ..models import AssessSession, Event, Group, ItemRecord, Review, StageObs, Student, Summary, Teacher
 
 router = APIRouter(prefix="/api")
 
@@ -32,6 +32,17 @@ def _can_touch(me, st):
 
 
 FORBIDDEN = {"ok": False, "error": "not your group"}
+
+
+def _lock_student(db, student_id):
+    """One save at a time per child. On PostgreSQL the second writer waits until the first has
+    committed and then works from what was saved - so two people saving the same score at the same
+    instant cannot silently overwrite each other (the later one gets the usual "someone else changed
+    this" answer), and no duplicate rows are created. Released automatically at commit / rollback."""
+    if db.get_bind().dialect.name == "postgresql":
+        from sqlalchemy import text
+
+        db.execute(text("SELECT pg_advisory_xact_lock(7240, :k)"), {"k": int(student_id)})
 
 
 @router.post("/summary/ai")
@@ -93,6 +104,7 @@ def save_summary(request: Request, payload: dict = Body(...), db: Session = Depe
     me = _me(request)
     if not _can_touch(me, student):
         return JSONResponse(status_code=403, content=FORBIDDEN)
+    _lock_student(db, student_id)
     row = db.query(Summary).filter_by(student_id=student_id).first()
     if row is None:
         row = Summary(student_id=student_id)
@@ -141,11 +153,18 @@ def switchable_teachers(request: Request, db: Session = Depends(get_db)):
     me = _me(request)
     if not me or not (me.role == "admin" or getattr(request.state, "admin_return", False)):
         return JSONResponse(status_code=403, content={"ok": False})
+    from .. import perm
+    from ..auth import parse_token
+
+    # the admin really behind this request (when impersonating a teacher: the one to return to)
+    real = me if me.role == "admin" else db.get(Teacher, parse_token(request.cookies.get("admin_auth") or "") or 0)
     teachers = db.query(Teacher).filter_by(active=True).order_by(Teacher.name).all()
     return {
         "ok": True,
         "teachers": [
-            {"id": te.id, "name": te.name, "role": te.role} for te in teachers if te.id != me.id
+            {"id": te.id, "name": te.name, "role": te.role}
+            for te in teachers
+            if te.id != me.id and (perm.can_switch_into(real, te) or (real is not None and te.id == real.id))
         ],
     }
 
@@ -161,6 +180,7 @@ def upsert_record(request: Request, payload: dict = Body(...), db: Session = Dep
         return JSONResponse(status_code=404, content={"ok": False, "error": "student not found"})
     if not _can_touch(_me(request), student):
         return JSONResponse(status_code=403, content=FORBIDDEN)
+    _lock_student(db, student_id)
 
     rec = db.query(ItemRecord).filter_by(student_id=student_id, code=code).first()
 
@@ -204,6 +224,7 @@ def add_event(request: Request, payload: dict = Body(...), db: Session = Depends
         return JSONResponse(status_code=404, content={"ok": False, "error": "student not found"})
     if not _can_touch(_me(request), student):
         return JSONResponse(status_code=403, content=FORBIDDEN)
+    _lock_student(db, student_id)
     ev = Event(
         student_id=student_id,
         category=str(payload.get("category") or "SEL"),
@@ -239,8 +260,10 @@ def delete_event(request: Request, payload: dict = Body(...), db: Session = Depe
     if ev:
         if not _can_touch(_me(request), ev.student):
             return JSONResponse(status_code=403, content=FORBIDDEN)
-        db.delete(ev)
-        db.commit()
+        _lock_student(db, ev.student_id)
+        if db.query(Event.id).filter_by(id=ev.id).first():  # not already removed by someone else
+            db.delete(ev)
+            db.commit()
     return {"ok": True}
 
 
@@ -252,6 +275,7 @@ def add_stage_obs(request: Request, payload: dict = Body(...), db: Session = Dep
         return JSONResponse(status_code=404, content={"ok": False, "error": "student not found"})
     if not _can_touch(_me(request), student):
         return JSONResponse(status_code=403, content=FORBIDDEN)
+    _lock_student(db, student_id)
     response = str(payload.get("response") or "")
     if response not in ("independent", "prompted", "none"):
         return JSONResponse(status_code=400, content={"ok": False, "error": "bad response"})
@@ -300,8 +324,11 @@ def delete_stage_obs(request: Request, payload: dict = Body(...), db: Session = 
     if obs:
         if not _can_touch(_me(request), obs.student):
             return JSONResponse(status_code=403, content=FORBIDDEN)
-        db.delete(obs)
-        db.commit()
+        _lock_student(db, obs.student_id)
+        # someone else may have removed it a moment ago: that is fine, it is gone either way
+        if db.query(StageObs.id).filter_by(id=obs.id).first():
+            db.delete(obs)
+            db.commit()
     return {"ok": True}
 
 
@@ -314,10 +341,19 @@ def upsert_stage_single(request: Request, payload: dict = Body(...), db: Session
         return JSONResponse(status_code=404, content={"ok": False, "error": "student not found"})
     if not _can_touch(_me(request), student):
         return JSONResponse(status_code=403, content=FORBIDDEN)
+    _lock_student(db, student_id)
     stage = str(payload.get("stage") or "Separation")
+    from ..stage_defs import stage_kind
+
+    pid = student.session.paper_id if student.session else None
+    if not pid:
+        from ..models import Paper
+
+        first = db.query(Paper.id).order_by(Paper.id).first()
+        pid = first[0] if first else None
     allowed = (
         ("independent", "brief", "support", "not_observed", "")
-        if stage == "Separation"
+        if stage == "Separation" or stage_kind(db, pid, stage) == "separation"
         else ("independent", "prompted", "none", "")
     )
     rows = (
@@ -365,6 +401,7 @@ def upsert_stage_dim(request: Request, payload: dict = Body(...), db: Session = 
         return JSONResponse(status_code=404, content={"ok": False, "error": "student not found"})
     if not _can_touch(_me(request), student):
         return JSONResponse(status_code=403, content=FORBIDDEN)
+    _lock_student(db, student_id)
 
     stage = str(payload.get("stage") or "")
     dim = str(payload.get("dim") or "")
@@ -407,6 +444,7 @@ def toggle_review(request: Request, payload: dict = Body(...), db: Session = Dep
         return JSONResponse(status_code=404, content={"ok": False, "error": "student not found"})
     if not _can_touch(_me(request), student):
         return JSONResponse(status_code=403, content=FORBIDDEN)
+    _lock_student(db, student_id)
     row = db.query(Review).filter_by(student_id=student_id).first()
     if row:
         db.delete(row)
@@ -437,6 +475,15 @@ def set_student_group(request: Request, payload: dict = Body(...), db: Session =
     if not st:
         return JSONResponse(status_code=404, content={"ok": False})
     gid = payload.get("group_id")
+    if gid:
+        # a group holds one grade only
+        other = (db.query(Student.level).filter(Student.group_id == int(gid), Student.id != st.id, Student.level != st.level).first())
+        if other:
+            from ..i18n import t
+
+            g = db.get(Group, int(gid))
+            return JSONResponse(status_code=409, content={"ok": False, "error": "mixed grades", "message": t("gb.mixed").format(
+                name=st.name, level=st.level, group=g.name if g else "", other=other[0])})
     st.group_id = int(gid) if gid else None
     db.commit()
     return {"ok": True}
@@ -449,23 +496,69 @@ def randomize_groups(request: Request, payload: dict = Body(...), db: Session = 
         return denied
     import random
 
+    from .. import bank as qbank
+    from ..i18n import t
+
     sid = int(payload["session_id"])
+    s = db.get(AssessSession, sid)
     groups = db.query(Group).filter_by(session_id=sid).order_by(Group.id).all()
-    if not groups:
+    if not s or not groups:
         return JSONResponse(status_code=400, content={"ok": False, "error": "no groups"})
     students = db.query(Student).filter_by(session_id=sid).all()
-    by_level = {}
-    for st in students:
-        by_level.setdefault(st.level, []).append(st)
-    gi = 0
-    for level in sorted(by_level):
-        bucket = by_level[level]
-        random.shuffle(bucket)
-        for st in bucket:
-            st.group_id = groups[gi % len(groups)].id
-            gi += 1
+    plan, unknown = plan_groups(students, groups, qbank.paper_levels(db, s.paper_id or qbank.default_paper_id(db)))
+    if plan is None:
+        grades = sorted({st.level for st in students if st not in unknown})
+        return JSONResponse(status_code=400, content={"ok": False, "error": "too few groups", "message": t("gb.rand_few").format(
+            grades=len(grades), names=" / ".join(grades), groups=len(groups))})
+    parts = []
+    for level, gs, sts in plan:
+        random.shuffle(sts)
+        for i, st in enumerate(sts):
+            st.group_id = gs[i % len(gs)].id
+        parts.append(t("gb.rand_part").format(level=level, groups=", ".join(g.name for g in gs), n=len(sts)))
+    used = {g.id for _, gs, _ in plan for g in gs}
+    for st in unknown:
+        st.group_id = None
     db.commit()
-    return {"ok": True}
+    message = t("gb.rand_done") + " " + "; ".join(parts)
+    if unknown:
+        message += " " + t("gb.rand_unknown").format(n=len(unknown))
+    empty = [g.name for g in groups if g.id not in used]
+    if empty:
+        message += " " + t("gb.rand_empty").format(names=", ".join(empty))
+    return {"ok": True, "message": message}
+
+
+def plan_groups(students, groups, levels):
+    """Which groups each grade gets, so that no group mixes grades.
+
+    Returns ([(level, [groups], [students])], [students whose grade is not in the interview]);
+    the plan is None when there are fewer groups than grades. Every grade gets at least one group;
+    the remaining groups go, one at a time, to the grade with the most children per group, so group
+    sizes stay as even as the grades allow (a small grade simply ends up with a smaller group).
+    Groups are handed out in list order: the first groups to the first grade, and so on."""
+    by_level, unknown = {}, []
+    for st in students:
+        if st.level in levels:
+            by_level.setdefault(st.level, []).append(st)
+        else:
+            unknown.append(st)
+    order = [lv for lv in levels if lv in by_level]
+    if not order:
+        return [], unknown
+    if len(groups) < len(order):
+        return None, unknown
+    share = {lv: 1 for lv in order}
+    for _ in range(len(groups) - len(order)):
+        lv = max(order, key=lambda x: (len(by_level[x]) / share[x], -order.index(x)))
+        if len(by_level[lv]) <= share[lv]:  # every group of every grade would have at most one child: leave the rest empty
+            break
+        share[lv] += 1
+    plan, i = [], 0
+    for lv in order:
+        plan.append((lv, groups[i:i + share[lv]], by_level[lv]))
+        i += share[lv]
+    return plan, unknown
 
 
 @router.post("/student/level")
@@ -476,12 +569,17 @@ def set_student_level(request: Request, payload: dict = Body(...), db: Session =
     st = db.get(Student, int(payload["student_id"]))
     if not st:
         return JSONResponse(status_code=404, content={"ok": False})
+    from .. import bank as qbank
+
     level = str(payload.get("level") or "")
-    if level not in ("TK", "K"):
+    if level not in qbank.paper_levels(db, st.session.paper_id or qbank.default_paper_id(db)):
         return JSONResponse(status_code=400, content={"ok": False, "error": "bad level"})
     st.level = level
+    moved_out = False
+    if st.group_id and db.query(Student.id).filter(Student.group_id == st.group_id, Student.id != st.id, Student.level != level).first():
+        st.group_id, moved_out = None, True  # its group belongs to another grade now: back to "not grouped"
     db.commit()
-    return {"ok": True}
+    return {"ok": True, "ungrouped": moved_out}
 
 
 @router.post("/student/email")

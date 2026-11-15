@@ -21,6 +21,9 @@ class Teacher(Base):
     id = Column(Integer, primary_key=True)
     name = Column(String(80), unique=True, nullable=False)
     role = Column(String(16), default="teacher")  # teacher / admin
+    # exactly one account is the owner: the only one that can change who is an admin,
+    # or touch another admin's account (see app/perm.py)
+    is_owner = Column(Boolean, default=False)
     active = Column(Boolean, default=True)
     password_hash = Column(String(256), default="")
 
@@ -89,6 +92,7 @@ class Paper(Base):
     id = Column(Integer, primary_key=True)
     name = Column(String(120), unique=True, nullable=False)
     note = Column(Text, default="")
+    levels = Column(Text, default="")  # grades this interview covers, in order, comma-separated ("" = TK,K / whatever has questions)
     created_at = Column(DateTime, default=datetime.now)
 
     questions = relationship("Question", back_populates="paper")
@@ -116,6 +120,17 @@ class Question(Base):
     e0 = Column(Text, nullable=True)
     has_expression = Column(Boolean, default=False)
     trial_max = Column(Integer, nullable=True)  # sub-trial count (/6, /3)
+    # what the task assesses + follow-up practice for families (shown on the report's last pages)
+    key_ability = Column(Text, default="")
+    practice = Column(Text, default="")  # extra practice questions
+    practice_answer = Column(Text, default="")  # answers / what to check
+    home_game = Column(Text, default="")  # at-home hands-on game
+    # curriculum links (kept for teachers; not printed on the report)
+    ta_topic = Column(Text, default="")
+    ta_lesson = Column(String(255), default="")
+    ccss_module = Column(String(255), default="")
+    ccss_codes = Column(String(255), default="")
+    scope_note = Column(Text, default="")
     # scoring type (app/bank.py QTYPES): single / expr / count — sets has_expression + trial_max
     qtype = Column(String(16), default="")
     # the question-bank entry this was cited from (a snapshot copy: editing the bank
@@ -157,8 +172,29 @@ class StoryPromptDef(Base):
     paper_id = Column(Integer, ForeignKey("papers.id"), nullable=False)
     idx = Column(Integer, nullable=False)
     text = Column(Text, nullable=False)
+    stage = Column(String(32), default="Story Time")  # which team part the prompts belong to
 
     paper = relationship("Paper")
+
+
+class PaperStage(Base):
+    """The team-interview parts of one interview, in order. `key` is what records
+    (stage_obs.stage, events.stage, rubric dimensions, stems) refer to and never
+    changes; the label can be renamed. kind decides how the part is scored:
+      separation  one of independent / brief / support
+      prompts     a response per prompt (like Story Time) + rubric dimensions
+      rubric      rubric dimensions only
+    """
+
+    __tablename__ = "paper_stages"
+    __table_args__ = (UniqueConstraint("paper_id", "key"),)
+    id = Column(Integer, primary_key=True)
+    paper_id = Column(Integer, ForeignKey("papers.id"), nullable=False)
+    key = Column(String(32), nullable=False)
+    label = Column(String(80), default="")  # "" = built-in name (translated)
+    label_zh = Column(String(80), default="")
+    kind = Column(String(16), nullable=False, default="rubric")
+    sort = Column(Integer, default=0)
 
 
 class ItemRecord(Base):
@@ -372,6 +408,17 @@ class BankQuestion(Base):
     e1 = Column(Text, nullable=True)
     e0 = Column(Text, nullable=True)
     trial_max = Column(Integer, nullable=True)
+    # what the task assesses + follow-up practice for families (shown on the report's last pages)
+    key_ability = Column(Text, default="")
+    practice = Column(Text, default="")  # extra practice questions
+    practice_answer = Column(Text, default="")  # answers / what to check
+    home_game = Column(Text, default="")  # at-home hands-on game
+    # curriculum links (kept for teachers; not printed on the report)
+    ta_topic = Column(Text, default="")
+    ta_lesson = Column(String(255), default="")
+    ccss_module = Column(String(255), default="")
+    ccss_codes = Column(String(255), default="")
+    scope_note = Column(Text, default="")
     tags = Column(String(255), default="")  # free labels, comma-separated
     created_by = Column(Integer, ForeignKey("teachers.id"), nullable=True)
     created_at = Column(DateTime, default=datetime.now)
@@ -457,3 +504,37 @@ class SourcePdf(Base):
     pages = Column(Integer, default=0)
     uploaded_by = Column(Integer, ForeignKey("teachers.id"), nullable=True)
     created_at = Column(DateTime, default=datetime.now)
+
+
+class LiveVersion(Base):
+    """A counter per session, bumped on every saved change (scores, observations,
+    events, reviews, comments, roster). Pages compare it to know when to refresh."""
+
+    __tablename__ = "live_versions"
+    session_id = Column(Integer, primary_key=True)
+    v = Column(Integer, nullable=False, default=0)
+    updated_at = Column(DateTime, default=datetime.now)
+
+
+class ChangeLog(Base):
+    """Append-only history of changes to a child's results and roster (app/audit.py).
+
+    changes = JSON {field: [old, new]}. Edits by the same person to the same item
+    within a minute are merged into one entry that keeps the original "old" value.
+    Plain integers (no foreign keys) so the history outlives deleted rows.
+    """
+
+    __tablename__ = "change_logs"
+    id = Column(Integer, primary_key=True)
+    at = Column(DateTime, default=datetime.now, index=True)
+    actor_id = Column(Integer, nullable=True)
+    actor_name = Column(String(80), default="")
+    via_name = Column(String(80), default="")  # admin acting as this teacher
+    session_id = Column(Integer, nullable=True, index=True)
+    student_id = Column(Integer, nullable=True, index=True)
+    student_name = Column(String(120), default="")
+    kind = Column(String(16), nullable=False)  # score / stage / event / review / comment / roster / bulk
+    ref = Column(String(120), default="")  # M03 · Story Time|2 · Cutting & Drawing|dim:creativity
+    action = Column(String(12), nullable=False)  # create / update / delete / clear
+    changes = Column(Text, default="{}")
+    source = Column(String(120), default="")

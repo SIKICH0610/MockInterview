@@ -7,75 +7,30 @@
     <div class="kicker"><a href="/admin/sessions">{{ t('nav.admin') | upper }}</a> · <a href="/admin/papers">{{ t('papers.title') | upper }}</a></div>
     <h1>{{ p.name }}</h1>
   </div>
+  <div class="head-actions">
+    <a class="btn" href="/admin/papers/{{ p.id }}/build">{{ t('build.title') }}</a>
+    <a class="btn btn-ghost" href="/admin/papers/{{ p.id }}/preview">{{ t('build.view_preview') }}</a>
+  </div>
 </div>
 {% if msg %}<div class="flash">{{ msg }}</div>{% endif %}
 
 {% if locked %}<div class="flash flash-err">{{ t('papers.locked') }}</div>
 {% else %}<p class="stage-hint">{{ t('papers.builder_hint') }}</p>{% endif %}
 
-{% for lv, doms in sections.items() %}
-<div class="card">
-  <div class="card-head"><span class="lv-badge lv-{{ lv }}">{{ lv }}</span> {{ t('papers.individual') }}
-    <span class="muted small">{{ doms.values() | map('length') | sum }} {{ t('papers.count') | lower }}</span></div>
-  {% for dom, qs in doms.items() %}
-  <div class="pb-domain">
-    <div class="rubric-head">{{ t('domain.' ~ dom) }}</div>
-    {% if qs %}
-    <table class="table pb-table">
-      {% for q in qs %}
-      <tr>
-        <td class="pb-code"><b class="qcode">{{ q.code }}</b></td>
-        <td>
-          {{ q.title }}{% if q.media %} <span class="bank-media-n">▣ {{ q.media | length }}</span>{% endif %}
-          <div class="muted small">{{ q.prompt | truncate(90) }}</div>
-        </td>
-        <td class="small muted pb-ab">{{ q.ability }}</td>
-        <td class="small pb-type">{% if q.qtype == 'count' %}{{ t('qtype.count_n').format(n=q.trial_max) }}{% else %}{{ t('qtype.' ~ (q.qtype or 'single')) }}{% endif %}</td>
-        <td class="t-actions pb-actions">
-          <a class="btn btn-ghost btn-sm" href="/admin/questions/{{ q.id }}/edit">{{ t('q.edit') }}</a>
-          {% if not locked %}
-          <form method="post" action="/admin/questions/{{ q.id }}/move" class="inline">
-            <input type="hidden" name="step" value="-1">
-            <button class="btn btn-ghost btn-sm btn-icon" type="submit" title="{{ t('papers.up') }}" aria-label="{{ t('papers.up') }}" {{ 'disabled' if loop.first }}>↑</button>
-          </form>
-          <form method="post" action="/admin/questions/{{ q.id }}/move" class="inline">
-            <input type="hidden" name="step" value="1">
-            <button class="btn btn-ghost btn-sm btn-icon" type="submit" title="{{ t('papers.down') }}" aria-label="{{ t('papers.down') }}" {{ 'disabled' if loop.last }}>↓</button>
-          </form>
-          <form method="post" action="/admin/questions/{{ q.id }}/delete" class="inline"
-                onsubmit="return confirm({{ t('papers.remove_confirm') | tojson }})">
-            <button class="btn btn-danger btn-sm" type="submit">{{ t('btn.remove') }}</button>
-          </form>
-          {% endif %}
-        </td>
-      </tr>
-      {% endfor %}
-    </table>
-    {% else %}
-    <p class="muted small">{{ t('papers.no_questions') }}</p>
-    {% endif %}
-    {% if not locked %}
-    <details class="pb-add">
-      <summary class="btn btn-ghost btn-sm" aria-label="{{ t('papers.add') }}">＋ {{ t('papers.add') }}</summary>
-      <div class="pb-add-menu">
-        <a class="btn btn-sm" href="/admin/papers/{{ p.id }}/new?version={{ lv }}&domain={{ dom | urlencode }}">{{ t('papers.add_new') }}</a>
-        <a class="btn btn-ghost btn-sm" href="/admin/bank?pick={{ p.id }}&version={{ lv }}&level={{ lv }}&domain={{ dom | urlencode }}">{{ t('papers.add_cite') }}</a>
-        <a class="btn btn-ghost btn-sm" href="/admin/pdfs?new={{ ('paper:' ~ p.id ~ ':' ~ lv ~ ':' ~ dom) | urlencode }}">{{ t('papers.add_pdf') }}</a>
-      </div>
-    </details>
-    {% endif %}
-  </div>
-  {% endfor %}
-</div>
-{% endfor %}
+<form method="post" action="/admin/papers/{{ p.id }}/import_sheet" enctype="multipart/form-data" class="card inline-form">
+  <label>{{ t('sheet.upload') }} <input type="file" name="file" accept=".xlsx" required></label>
+  <button class="btn btn-ghost" type="submit">{{ t('btn.import') }}</button>
+  <span class="muted small">{{ t('sheet.hint') }}</span>
+</form>
 
 <div class="card">
   <div class="card-head"><span class="sec-num">TEAM</span> {{ t('papers.team') }}</div>
-  <p class="muted small">{{ t('papers.team_hint') }}</p>
-  {% for st in obs_stages %}
+  <p class="muted small">{{ t('papers.team_hint') }} <a href="/admin/papers/{{ p.id }}/build">{{ t('parts.manage') }}</a></p>
+  {% for part in parts %}
+  {% set st = part.key %}
   {% set mat = materials.get(st) %}
-  <div class="dimedit-block pb-stage">
-    <div class="pb-stage-head">{{ t('stage.' ~ st) }} <span class="muted small">· {{ st }}</span>
+  <div class="dimedit-block pb-stage" id="part-{{ part.id }}">
+    <div class="pb-stage-head">{{ loop.index }}. {{ t('stage.' ~ st) }} <span class="bank-tag">{{ t('parts.kind.' ~ part.kind) }}</span>
       {% if mat and mat.activity_id %}<span class="bank-tag">{{ t('papers.from_bank') }}</span>{% endif %}</div>
 
     <div class="rubric-head">{{ t('papers.stem_head') }}</div>
@@ -103,23 +58,25 @@
     {{ media_editor(stage_media[st], '/admin/papers/' ~ p.id) }}
     {% endif %}
 
-    {% if st == 'Story Time' %}
-    <details class="pb-more">
-      <summary>{{ t('papers.prompts_head') }} <span class="muted small">({{ prompts | length }})</span></summary>
+    {% if part.kind == 'prompts' %}
+    {% set prs = prompts_by.get(st, []) %}
+    <details class="pb-more" {{ 'open' if not prs }}>
+      <summary>{{ t('papers.prompts_head') }} <span class="muted small">({{ prs | length }})</span></summary>
       <form method="post" action="/admin/papers/{{ p.id }}/prompts">
-        <textarea name="text" rows="{{ [prompts | length + 1, 9] | min }}" class="dimedit-ta">{{ prompts | join('\n') }}</textarea>
+        <input type="hidden" name="stage" value="{{ st }}">
+        <textarea name="text" rows="{{ [[prs | length + 1, 9] | min, 3] | max }}" class="dimedit-ta">{{ prs | join('\n') }}</textarea>
         <div class="dimedit-bar"><button class="btn btn-sm" type="submit">{{ t('btn.save') }}</button></div>
       </form>
     </details>
     {% endif %}
 
-    {% if dims.get(st) %}
+    {% if part.kind != 'separation' %}
     <details class="pb-more">
-      <summary>{{ t('papers.dims_head') }} <span class="muted small">({{ dims[st] | length }})</span></summary>
+      <summary>{{ t('papers.dims_head') }} <span class="muted small">({{ dims.get(st, []) | length }})</span></summary>
       <p class="muted small">{{ t('papers.dims_note') }}</p>
       <form method="post" action="/admin/papers/{{ p.id }}/dims">
         <input type="hidden" name="stage" value="{{ st }}">
-        {% for d in dims[st] %}
+        {% for d in dims.get(st, []) %}
         <div class="dimedit-row">
           <input type="hidden" name="key" value="{{ d.key }}">
           <div class="dimedit-labels">
@@ -161,4 +118,62 @@
   </div>
   {% endfor %}
 </div>
+
+{% for lv, doms in sections.items() %}
+<div class="card">
+  <div class="card-head"><span class="lv-badge lv-{{ lv }}">{{ lv }}</span> {{ t('papers.individual') }}
+    <span class="muted small">{{ doms.values() | map('length') | sum }} {{ t('papers.count') | lower }}</span></div>
+  {% for dom, qs in doms.items() %}
+  <div class="pb-domain">
+    <div class="rubric-head">{{ t('domain.' ~ dom) }}</div>
+    {% if qs %}
+    <table class="table pb-table">
+      {% for q in qs %}
+      <tr>
+        <td class="pb-code"><b class="qcode">{{ q.code }}</b></td>
+        <td>
+          {{ q.title }}{% if q.media %} <span class="bank-media-n">▣ {{ q.media | length }}</span>{% endif %}
+          <div class="muted small">{{ q.prompt | truncate(90) }}</div>
+          {% if q.key_ability %}<div class="small pb-key">{{ q.key_ability | truncate(110) }}{% if q.practice or q.home_game %} <span class="bank-tag">{{ t('sheet.has_practice') }}</span>{% endif %}</div>{% endif %}
+        </td>
+        <td class="small muted pb-ab">{{ q.ability }}</td>
+        <td class="small pb-type">{% if q.qtype == 'count' %}{{ t('qtype.count_n').format(n=q.trial_max) }}{% else %}{{ t('qtype.' ~ (q.qtype or 'single')) }}{% endif %}</td>
+        <td class="t-actions pb-actions">
+          <a class="btn btn-ghost btn-sm" href="/admin/questions/{{ q.id }}/edit">{{ t('q.edit') }}</a>
+          {% if not locked %}
+          <form method="post" action="/admin/questions/{{ q.id }}/move" class="inline">
+            <input type="hidden" name="step" value="-1">
+            <button class="btn btn-ghost btn-sm btn-icon" type="submit" title="{{ t('papers.up') }}" aria-label="{{ t('papers.up') }}" {{ 'disabled' if loop.first }}>↑</button>
+          </form>
+          <form method="post" action="/admin/questions/{{ q.id }}/move" class="inline">
+            <input type="hidden" name="step" value="1">
+            <button class="btn btn-ghost btn-sm btn-icon" type="submit" title="{{ t('papers.down') }}" aria-label="{{ t('papers.down') }}" {{ 'disabled' if loop.last }}>↓</button>
+          </form>
+          <form method="post" action="/admin/questions/{{ q.id }}/delete" class="inline"
+                onsubmit="return confirm({{ t('papers.remove_confirm') | tojson }})">
+            <button class="btn btn-danger btn-sm" type="submit">{{ t('btn.remove') }}</button>
+          </form>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </table>
+    {% else %}
+    <p class="muted small">{{ t('papers.no_questions') }}</p>
+    {% endif %}
+    {% if not locked %}
+    <details class="pb-add">
+      <summary class="btn btn-ghost btn-sm" aria-label="{{ t('papers.add') }}">＋ {{ t('papers.add') }}</summary>
+      <div class="pb-add-menu">
+        <a class="btn btn-sm" href="/admin/papers/{{ p.id }}/new?version={{ lv }}&domain={{ dom | urlencode }}">{{ t('papers.add_new') }}</a>
+        <a class="btn btn-ghost btn-sm" href="/admin/bank?pick={{ p.id }}&version={{ lv }}&level={{ lv }}&domain={{ dom | urlencode }}">{{ t('papers.add_cite') }}</a>
+        <a class="btn btn-ghost btn-sm" href="/admin/pdfs?new={{ ('paper:' ~ p.id ~ ':' ~ lv ~ ':' ~ dom) | urlencode }}">{{ t('papers.add_pdf') }}</a>
+      </div>
+    </details>
+    {% endif %}
+  </div>
+  {% endfor %}
+</div>
+{% endfor %}
+
 {% endblock %}

@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, Request
-from fastapi.responses import RedirectResponse, Response
+from fastapi.responses import RedirectResponse, Response, StreamingResponse
 from sqlalchemy.orm import Session
 
 from ..db import get_db
@@ -43,6 +43,37 @@ def _paper_questions(db, paper_id):
     return out, codes, set(out.keys())
 
 
+def _event_stages(db, s):
+    """Where an SEL / classroom event can be logged: the interview's team parts + the general ones."""
+    from ..stage_defs import paper_stages
+
+    return [p["key"] for p in paper_stages(db, _paper_id_for(db, s))] + [x for x in STAGES if x in ("Station", "Other")]
+
+
+def _changed_after_review(db, reviews):
+    """{student_id: (count, last time)} of result changes made after the child was confirmed."""
+    from ..models import ChangeLog
+
+    out = {}
+    for stid, rv in reviews.items():
+        rows = (
+            db.query(ChangeLog.at)
+            .filter(ChangeLog.student_id == stid, ChangeLog.at > rv.created_at,
+                    ChangeLog.kind.in_(("score", "stage", "event", "comment")))
+            .all()
+        )
+        if rows:
+            out[stid] = (len(rows), max(r[0] for r in rows))
+    return out
+
+
+def _may_open(db, teacher, s):
+    """Teachers may open only sessions in which a group is assigned to them (admins: all)."""
+    from ..perm import can_open_session
+
+    return can_open_session(db, teacher, s.id)
+
+
 def _allowed_groups(db, session_id, teacher):
     groups = db.query(Group).filter_by(session_id=session_id).order_by(Group.id).all()
     if teacher and teacher.role == "admin":
@@ -78,7 +109,9 @@ def _records_map(db, student_ids):
 
 @router.get("")
 def select_page(request: Request, msg: str = "", session_id: int = 0, db: Session = Depends(get_db)):
-    sessions = db.query(AssessSession).order_by(AssessSession.date.desc()).all()
+    from ..perm import visible_sessions
+
+    sessions = visible_sessions(db, request.state.teacher)  # teachers: only sessions they are assigned to
     return templates.TemplateResponse(
         request,
         "wb_select.html",
@@ -110,10 +143,18 @@ def stage_mode(
     teacher = request.state.teacher
     if not s:
         return RedirectResponse("/wb", status_code=303)
+    if not _may_open(db, teacher, s):
+        return RedirectResponse("/wb?msg=not_assigned", status_code=303)
     if not _grouping_ready(db, s):
         return _gate_redirect(session_id, teacher)
-    if stage not in OBS_STAGES:
-        stage = "Separation"
+    from ..stage_defs import paper_prompts as _prompts_of, paper_stages
+
+    parts = paper_stages(db, _paper_id_for(db, s))
+    if stage not in [p["key"] for p in parts]:
+        stage = parts[0]["key"]
+    stage_kind = next(p["kind"] for p in parts if p["key"] == stage)
+    if stage_kind == "prompts" and not _prompts_of(db, _paper_id_for(db, s), stage):
+        stage_kind = "rubric"  # no questions written yet: rate on the rating items only
 
     groups = _allowed_groups(db, session_id, teacher)
     group = None
@@ -153,14 +194,18 @@ def stage_mode(
             "s": s,
             "teacher": teacher,
             "groups": groups,
+            "my_groups": [g for g in groups if g.teacher_id == teacher.id],
+            "other_groups": [g for g in groups if g.teacher_id != teacher.id],
+            "viewing_other": bool(group and group.teacher_id != teacher.id),
             "group": group,
             "students": students,
             "stage": stage,
-            "obs_stages": OBS_STAGES,
+            "obs_stages": [p["key"] for p in parts],
+            "stage_kind": stage_kind,
             "obs_by_student": obs_by_student,
             "dimvals": dimvals,
             "stage_dims": paper_dims(db, pid).get(stage, []),
-            "prompts": paper_prompts(db, pid),
+            "prompts": paper_prompts(db, pid, stage) if stage_kind == "prompts" else [],
             "material": db.query(StageMaterial).filter_by(paper_id=pid, stage=stage).first(),
             "stage_media": db.query(QuestionMedia)
             .filter_by(paper_id=pid, stage=stage)
@@ -170,6 +215,77 @@ def stage_mode(
             "active": "wb",
         },
     )
+
+
+@router.get("/live/{sid}")
+async def live_stream(sid: int, request: Request):
+    """Server-Sent Events: one line per saved change in this session."""
+    import asyncio
+    import json
+
+    from .. import live
+    from ..db import SessionLocal
+    from ..perm import can_open_session
+
+    _db = SessionLocal()
+    try:
+        allowed = can_open_session(_db, request.state.teacher, sid)
+    finally:
+        _db.close()
+    if not allowed:
+        return Response(status_code=403)
+
+    entry = live.subscribe()
+
+    async def gen():
+        try:
+            yield "retry: 3000\n\n"
+            yield 'event: hello\ndata: {}\n\n'
+            while True:
+                if await request.is_disconnected():
+                    break
+                try:
+                    msg = await asyncio.wait_for(entry[1].get(), timeout=20)
+                except asyncio.TimeoutError:
+                    yield ": ping\n\n"  # keeps nginx / Cloudflare from closing an idle stream
+                    continue
+                if msg.get("sid") == sid:
+                    yield f"data: {json.dumps(msg)}\n\n"
+        finally:
+            live.unsubscribe(entry)
+
+    return StreamingResponse(
+        gen(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache, no-transform", "X-Accel-Buffering": "no"},
+    )
+
+
+@router.get("/live/{sid}/version")
+def live_version(sid: int, request: Request, db: Session = Depends(get_db)):
+    """Fallback when the stream is unavailable: the page polls this number."""
+    from .. import live
+    from ..perm import can_open_session
+
+    if not can_open_session(db, request.state.teacher, sid):
+        return Response(status_code=403)
+
+    return {"v": live.version(db, sid)}
+
+
+@router.get("/history")
+def history_fragment(request: Request, student_id: int, kind: str = "", ref: str = "", ref_prefix: str = "",
+                     db: Session = Depends(get_db)):
+    """The change history of one child (optionally one question / activity), as HTML for the popover."""
+    from .. import audit
+
+    st = db.get(Student, student_id)
+    if not audit.can_view(request.state.teacher, st):
+        return Response(status_code=403)
+    entries = audit.query(db, student_id=student_id, kind=kind or None, ref=ref or None,
+                          ref_prefix=ref_prefix or None, limit=100)
+    return templates.TemplateResponse(request, "_history_list.html",
+                                      {"entries": audit.describe(db, entries), "show_child": False})
 
 
 @router.get("/media/{mid}")
@@ -196,21 +312,30 @@ def student_list(request: Request, session_id: int, db: Session = Depends(get_db
     teacher = request.state.teacher
     if not s:
         return RedirectResponse("/wb", status_code=303)
+    if not _may_open(db, teacher, s):
+        return RedirectResponse("/wb?msg=not_assigned", status_code=303)
     if not _grouping_ready(db, s):
         return _gate_redirect(session_id, teacher)
+    others = []
     if teacher.role == "admin":
-        students = (
-            db.query(Student).filter_by(session_id=session_id).order_by(Student.level, Student.name).all()
-        )
+        # an admin's own group(s) first; everyone else's children are kept behind "other teachers' students"
+        everyone = db.query(Student).filter_by(session_id=session_id).order_by(Student.level, Student.name).all()
+        mine = {g.id for g in _allowed_groups(db, session_id, teacher) if g.teacher_id == teacher.id}
+        if mine:
+            students = [st for st in everyone if st.group_id in mine]
+            others = sorted((st for st in everyone if st.group_id not in mine),
+                            key=lambda x: ((x.group.name if x.group else "~"), x.level, x.name))
+        else:
+            students = everyone
     else:
         allowed = _allowed_groups(db, session_id, teacher)
         students = sorted(
             [st for g in allowed for st in g.students], key=lambda x: (x.level, x.name)
         )
     _, codes, _ = _paper_questions(db, _paper_id_for(db, s))
-    records = _records_map(db, [st.id for st in students])
+    records = _records_map(db, [st.id for st in students + others])
     progress = {}
-    for st in students:
+    for st in students + others:
         done = sum(1 for c in codes if (st.id, c) in records and records[(st.id, c)].status)
         progress[st.id] = done
     return templates.TemplateResponse(
@@ -220,6 +345,8 @@ def student_list(request: Request, session_id: int, db: Session = Depends(get_db
             "s": s,
             "teacher": teacher,
             "students": students,
+            "others": others,
+            "teacher_names": {x.id: x.name for x in db.query(Teacher).all()},
             "progress": progress,
             "total": len(codes),
             "active": "wb",
@@ -233,6 +360,8 @@ def review_mode(request: Request, session_id: int, db: Session = Depends(get_db)
     teacher = request.state.teacher
     if not s:
         return RedirectResponse("/wb", status_code=303)
+    if not _may_open(db, teacher, s):
+        return RedirectResponse("/wb?msg=not_assigned", status_code=303)
     if not _grouping_ready(db, s):
         return _gate_redirect(session_id, teacher)
 
@@ -245,26 +374,22 @@ def review_mode(request: Request, session_id: int, db: Session = Depends(get_db)
     questions, codes, _ = _paper_questions(db, _paper_id_for(db, s))
     records = _records_map(db, ids)
 
-    sep = {}
+    from ..stage_defs import paper_stages
+
+    parts = paper_stages(db, _paper_id_for(db, s))  # one review column per team part
+    sep_keys = {p["key"] for p in parts if p["kind"] == "separation"}
+    sep = {}  # (student, part) -> the single separation-type record
     ct_counts = {}
     obs_counts = {}
     obs_stage = {}
-    stage_counts = {}  # (student, stage) -> records, one review column per team activity
+    stage_counts = {}  # (student, part) -> records
+    team_any = set()
     if ids:
         for o in db.query(StageObs).filter(StageObs.student_id.in_(ids)).all():
             stage_counts[(o.student_id, o.stage)] = stage_counts.get((o.student_id, o.stage), 0) + 1
-            if o.stage == "Separation":
-                sep[o.student_id] = o
-            elif o.stage == "Story Time":
-                ct_counts[o.student_id] = ct_counts.get(o.student_id, 0) + 1
-            else:
-                obs_counts[o.student_id] = obs_counts.get(o.student_id, 0) + 1
-                # "Stages" column links to the first other stage with records
-                prev = obs_stage.get(o.student_id)
-                if o.stage in OBS_STAGES and (
-                    prev is None or OBS_STAGES.index(o.stage) < OBS_STAGES.index(prev)
-                ):
-                    obs_stage[o.student_id] = o.stage
+            team_any.add(o.student_id)
+            if o.stage in sep_keys and not o.dim:
+                sep[(o.student_id, o.stage)] = o
 
     ev_counts = {}
     if ids:
@@ -285,7 +410,7 @@ def review_mode(request: Request, session_id: int, db: Session = Depends(get_db)
             status[st.id] = "reviewed"
         elif done == len(codes):
             status[st.id] = "ready"
-        elif done > 0 or st.id in sep or st.id in ct_counts or st.id in obs_counts or st.id in ev_counts:
+        elif done > 0 or st.id in team_any or st.id in ev_counts:
             status[st.id] = "in_progress"
         else:
             status[st.id] = "not_started"
@@ -319,7 +444,9 @@ def review_mode(request: Request, session_id: int, db: Session = Depends(get_db)
             "questions": questions,
             "records": records,
             "sep": sep,
+            "parts": parts,
             "ct_counts": ct_counts,
+            "changed_after": _changed_after_review(db, reviews),
             "stage_counts": stage_counts,
             "obs_counts": obs_counts,
             "obs_stage": obs_stage,
@@ -372,10 +499,14 @@ def student_mode(request: Request, stid: int, db: Session = Depends(get_db)):
         db.query(Event).filter_by(student_id=st.id).order_by(Event.created_at.desc()).all()
     )
     teacher_names = {t.id: t.name for t in db.query(Teacher).all()}
+    from .. import audit
+
+    history = audit.describe(db, audit.query(db, student_id=st.id, limit=300))
     return templates.TemplateResponse(
         request,
         "wb_student.html",
         {
+            "history": history,
             "s": s,
             "st": st,
             "teacher": teacher,
@@ -383,7 +514,7 @@ def student_mode(request: Request, stid: int, db: Session = Depends(get_db)):
             "records": records,
             "codes": codes,
             "events": events,
-            "stages": STAGES,
+            "stages": _event_stages(db, s),
             "teacher_names": teacher_names,
             "roster": roster,
             "progress": progress,

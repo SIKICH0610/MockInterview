@@ -1,0 +1,326 @@
+{% extends "base.html" %}
+{% block title %}{{ p.name }} · {{ t('build.title') }}{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <div class="kicker"><a href="/admin/sessions">{{ t('nav.admin') | upper }}</a> · <a href="/admin/papers">{{ t('papers.title') | upper }}</a></div>
+    <form method="post" action="/admin/papers/{{ p.id }}/rename" class="bd-rename">
+      <input type="hidden" name="back" value="/admin/papers/{{ p.id }}/build">
+      <input type="text" name="name" value="{{ p.name }}" maxlength="120" required aria-label="{{ t('papers.name') }}">
+      <button class="btn btn-ghost btn-sm" type="submit">{{ t('teachers.rename') }}</button>
+    </form>
+  </div>
+  <div class="head-actions">
+    <a class="btn btn-ghost" href="/admin/papers/{{ p.id }}/preview" target="_blank">{{ t('build.preview_tab') }}</a>
+    <a class="btn btn-ghost" href="/admin/papers/{{ p.id }}">{{ t('build.details') }}</a>
+  </div>
+</div>
+{% if msg %}<div class="flash">{{ msg }}</div>{% endif %}
+{% if locked %}<div class="flash flash-err">{{ t('build.locked') }}</div>
+{% else %}<p class="stage-hint">{{ t('build.hint') }}</p>{% endif %}
+
+<div class="bd" id="bd" data-paper="{{ p.id }}" data-locked="{{ 1 if locked else 0 }}"
+     data-msgs='{{ {"replace": t("build.confirm_replace"), "remove": t("papers.remove_confirm"), "clear": t("build.confirm_clear"),
+                    "added": t("build.added"), "in_use": t("build.in_use"), "pick": t("parts.pick")} | tojson | forceescape }}'>
+
+  <!-- ===== left: question bank ===== -->
+  <aside class="bd-bank card">
+    <div class="bd-bank-head">{{ t('bank.title') }}</div>
+    <div class="wb-nav bd-tabs">
+      <button type="button" class="wbn on" data-tab="act">{{ t('bank.tab_team') }} <span class="chip-count">{{ bank_activities | length }}</span></button>
+      <button type="button" class="wbn" data-tab="q">{{ t('bank.tab_individual') }} <span class="chip-count">{{ bank_questions | length }}</span></button>
+    </div>
+    <input type="search" id="bd-search" placeholder="{{ t('bank.search_ph') }}" aria-label="{{ t('bank.search') }}">
+    <div class="bd-filters" data-for="q" hidden>
+      <select id="bd-f-domain" aria-label="{{ t('q.domain') }}">
+        <option value="">{{ t('q.domain') }}: {{ t('bank.all') }}</option>
+        {% for dm in domains %}<option value="{{ dm }}">{{ t('domain.' ~ dm) }}</option>{% endfor %}
+      </select>
+      <select id="bd-f-level" aria-label="{{ t('label.level') }}">
+        <option value="">{{ t('label.level') }}: {{ t('bank.all') }}</option>
+        {% for lv in all_levels %}<option value="{{ lv }}">{{ lv }}</option>{% endfor %}
+      </select>
+      <select id="bd-f-type" aria-label="{{ t('bank.type') }}">
+        <option value="">{{ t('bank.type') }}: {{ t('bank.all') }}</option>
+        {% for x in qtypes %}<option value="{{ x }}">{{ t('qtype.' ~ x) }}</option>{% endfor %}
+      </select>
+    </div>
+
+    <div class="bd-cards" data-tab="act">
+      {% for a in bank_activities %}
+      <div class="bk-card" draggable="true" data-kind="act" data-id="{{ a.id }}" data-stage="{{ a.stage }}"
+           data-search="{{ (a.title ~ ' ' ~ a.prompt ~ ' ' ~ a.tags ~ ' ' ~ t('stage.' ~ a.stage)) | lower }}">
+        <div class="bk-main">
+          <div class="bk-title">{{ a.title }}{% if media_a.get(a.id) %} <span class="bank-media-n">▣ {{ media_a[a.id] }}</span>{% endif %}</div>
+          <div class="bk-meta"><span class="bank-tag">{{ t('stage.' ~ a.stage) }}</span></div>
+          <div class="muted small">{{ a.prompt | truncate(80) }}</div>
+        </div>
+        <div class="bk-add"><button type="button" class="btn btn-ghost btn-sm" data-add-act="{{ a.id }}" title="{{ t('parts.pick_btn') }}" aria-label="{{ t('parts.pick_btn') }}">＋</button></div>
+      </div>
+      {% else %}
+      <p class="muted small">{{ t('bank.empty_team') }}</p>
+      {% endfor %}
+      <a class="btn btn-ghost btn-sm" href="/admin/teambank/new" target="_blank">+ {{ t('bank.new_team') }}</a>
+    </div>
+
+    <div class="bd-cards" data-tab="q" hidden>
+      {% if locked %}<p class="mail-warn small">{{ t('papers.locked_msg') }}</p>{% endif %}
+      {% for b in bank_questions %}
+      <div class="bk-card" draggable="{{ 'false' if locked else 'true' }}" data-kind="q" data-id="{{ b.id }}" data-domain="{{ b.domain }}"
+           data-level="{{ b.level }}" data-qtype="{{ b.qtype }}"
+           data-search="{{ (b.title ~ ' ' ~ b.prompt ~ ' ' ~ b.ability ~ ' ' ~ b.tags ~ ' ' ~ b.key_ability) | lower }}">
+        <div class="bk-main">
+          <div class="bk-title">{{ b.title }}{% if media_q.get(b.id) %} <span class="bank-media-n">▣ {{ media_q[b.id] }}</span>{% endif %}</div>
+          <div class="bk-meta">
+            {% if b.level %}<span class="lv-badge lv-{{ b.level }}">{{ b.level }}</span>{% else %}<span class="bank-tag">{{ t('grades.all') }}</span>{% endif %}
+            <span class="bank-tag">{{ t('domain.' ~ b.domain) }}</span>
+            <span class="muted small">{{ b.ability }} · {% if b.qtype == 'count' %}{{ t('qtype.count_n').format(n=b.trial_max) }}{% else %}{{ t('qtype.' ~ b.qtype) }}{% endif %}</span>
+          </div>
+          <div class="muted small">{{ b.prompt | truncate(80) }}</div>
+        </div>
+        {% if not locked %}
+        <div class="bk-add">
+          {% for lv in levels %}<button type="button" class="btn btn-ghost btn-sm" data-add-q="{{ b.id }}" data-version="{{ lv }}"
+                  title="{{ t('build.add_to').format(where=lv ~ ' · ' ~ t('domain.' ~ b.domain)) }}">＋{{ lv }}</button>{% endfor %}
+        </div>
+        {% endif %}
+      </div>
+      {% endfor %}
+      <a class="btn btn-ghost btn-sm" href="/admin/bank/new" target="_blank">+ {{ t('bank.new_q') }}</a>
+    </div>
+    <p class="muted small bd-none" hidden>{{ t('bank.empty') }}</p>
+  </aside>
+
+  <!-- ===== right: the interview ===== -->
+  <section class="bd-right">
+    <div class="bd-right-bar">
+      <div class="wb-nav">
+        <button type="button" class="wbn on" data-view="outline">{{ t('build.view_outline') }}</button>
+        <button type="button" class="wbn" data-view="preview">{{ t('build.view_preview') }}</button>
+      </div>
+      <span class="muted small" id="bd-status"></span>
+    </div>
+    <div id="bd-outline">{% include "_builder_outline.html" %}</div>
+    <div id="bd-preview" hidden></div>
+  </section>
+</div>
+
+<script>
+(function () {
+  const root = document.getElementById("bd");
+  const pid = root.dataset.paper, locked = root.dataset.locked === "1";
+  const M = JSON.parse(root.dataset.msgs);
+  const outline = document.getElementById("bd-outline"), preview = document.getElementById("bd-preview");
+  const status = document.getElementById("bd-status");
+  let drag = null, view = "outline", marker = null;
+
+  async function post(path, body) {
+    const r = await fetch(`/admin/papers/${pid}/build/${path}`, {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
+    });
+    let j = {};
+    try { j = await r.json(); } catch (e) { j = { ok: false, error: "HTTP " + r.status }; }
+    if (!j.ok) alert(j.error || "error");
+    return j;
+  }
+  async function loadPreview() {
+    preview.innerHTML = await (await fetch(`/admin/papers/${pid}/preview?fragment=1`)).text();
+  }
+  function markUsed() {
+    const usedQ = new Set([...outline.querySelectorAll("[data-bank-id]")].map((e) => e.dataset.bankId).filter(Boolean));
+    const usedA = new Set([...outline.querySelectorAll("[data-activity-id]")].map((e) => e.dataset.activityId).filter(Boolean));
+    document.querySelectorAll(".bk-card").forEach((c) => {
+      const used = (c.dataset.kind === "q" ? usedQ : usedA).has(c.dataset.id);
+      c.classList.toggle("used", used);
+      c.title = used ? M.in_use : "";
+    });
+  }
+  async function refresh(note) {
+    outline.innerHTML = await (await fetch(`/admin/papers/${pid}/build/outline`)).text();
+    markUsed();
+    if (view === "preview") loadPreview();
+    if (note) { status.textContent = note; setTimeout(() => { if (status.textContent === note) status.textContent = ""; }, 2500); }
+  }
+
+  /* ---------- bank: tabs, search, filters ---------- */
+  let tab = "act";
+  const search = document.getElementById("bd-search");
+  const fDomain = document.getElementById("bd-f-domain"), fLevel = document.getElementById("bd-f-level"), fType = document.getElementById("bd-f-type");
+  function applyFilter() {
+    const q = search.value.trim().toLowerCase();
+    let shown = 0;
+    document.querySelectorAll(`.bd-cards[data-tab="${tab}"] .bk-card`).forEach((c) => {
+      let ok = !q || c.dataset.search.includes(q);
+      if (ok && tab === "q") {
+        if (fDomain.value && c.dataset.domain !== fDomain.value) ok = false;
+        if (fLevel.value && c.dataset.level && c.dataset.level !== fLevel.value) ok = false;
+        if (fType.value && c.dataset.qtype !== fType.value) ok = false;
+      }
+      c.hidden = !ok;
+      if (ok) shown++;
+    });
+    document.querySelector(".bd-none").hidden = shown > 0 || !document.querySelector(`.bd-cards[data-tab="${tab}"] .bk-card`);
+  }
+  document.querySelectorAll(".bd-tabs .wbn").forEach((b) => b.addEventListener("click", () => {
+    tab = b.dataset.tab;
+    document.querySelectorAll(".bd-tabs .wbn").forEach((x) => x.classList.toggle("on", x === b));
+    document.querySelectorAll(".bd-cards").forEach((l) => (l.hidden = l.dataset.tab !== tab));
+    document.querySelector(".bd-filters").hidden = tab !== "q";
+    applyFilter();
+  }));
+  [search, fDomain, fLevel, fType].forEach((el) => el.addEventListener("input", applyFilter));
+
+  /* ---------- right: structure / preview ---------- */
+  document.querySelectorAll(".bd-right-bar .wbn").forEach((b) => b.addEventListener("click", () => {
+    view = b.dataset.view;
+    document.querySelectorAll(".bd-right-bar .wbn").forEach((x) => x.classList.toggle("on", x === b));
+    outline.hidden = view !== "outline";
+    preview.hidden = view !== "preview";
+    if (view === "preview") loadPreview();
+  }));
+
+  /* ---------- actions ---------- */
+  async function addQuestion(bankId, version, index) {
+    const j = await post("add", { bank_id: bankId, version, index });
+    if (j.ok) refresh(M.added.replace("{code}", `${version} ${j.code}`));
+  }
+  async function setStem(activityId, stage) {
+    const zone = outline.querySelector(`.bd-stage[data-stage="${CSS.escape(stage)}"]`);
+    if (zone && zone.classList.contains("filled") && !confirm(M.replace)) return;
+    const j = await post("stage", { activity_id: activityId, stage });
+    if (j.ok) refresh();
+  }
+  /* "+" on a stem: choose the part by clicking it (a stem can go into any part) */
+  let picking = null;
+  function stopPick() {
+    picking = null;
+    root.classList.remove("bd-picking");
+    document.querySelectorAll(".bk-card.picking").forEach((c) => c.classList.remove("picking"));
+    if (status.textContent === M.pick) status.textContent = "";
+  }
+  function startPick(activityId, card) {
+    stopPick();
+    picking = activityId;
+    root.classList.add("bd-picking");
+    card.classList.add("picking");
+    status.textContent = M.pick;
+    if (view !== "outline") document.querySelector('.bd-right-bar .wbn[data-view="outline"]').click();
+  }
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape") stopPick(); });
+  document.addEventListener("click", async (e) => {
+    const aq = e.target.closest("[data-add-q]");
+    if (aq) { addQuestion(parseInt(aq.dataset.addQ, 10), aq.dataset.version, null); return; }
+    const aa = e.target.closest("[data-add-act]");
+    if (aa) {
+      const id = parseInt(aa.dataset.addAct, 10);
+      if (picking === id) stopPick(); else startPick(id, aa.closest(".bk-card"));
+      return;
+    }
+    const rn = e.target.closest("[data-part-rename]");
+    if (rn) {
+      const f = outline.querySelector(`[data-rename-form="${rn.dataset.partRename}"]`);
+      if (f) { f.hidden = !f.hidden; if (!f.hidden) f.querySelector("input[name=label]").focus(); }
+      return;
+    }
+    if (picking !== null) {
+      const pz = e.target.closest(".bd-stage");
+      if (pz && !e.target.closest("[data-clear-stage]")) { const id = picking; stopPick(); setStem(id, pz.dataset.stage); return; }
+    }
+    const rq = e.target.closest("[data-remove-q]");
+    if (rq) {
+      if (!confirm(M.remove)) return;
+      const j = await post("remove", { question_id: parseInt(rq.dataset.removeQ, 10) });
+      if (j.ok) refresh();
+      return;
+    }
+    const cs = e.target.closest("[data-clear-stage]");
+    if (cs) {
+      if (!confirm(M.clear)) return;
+      const j = await post("stage", { clear: true, stage: cs.dataset.clearStage });
+      if (j.ok) refresh();
+    }
+  });
+
+  /* ---------- drag & drop ---------- */
+  function accepts(zone) {
+    if (!drag || !zone) return false;
+    if (drag.src === "bank" && drag.kind === "act") return zone.dataset.kind === "stage";
+    if (locked) return false;
+    if (drag.src === "bank" && drag.kind === "q") return zone.dataset.kind === "q" && zone.dataset.domain === drag.domain;
+    if (drag.src === "item") return zone.dataset.kind === "q" && zone.dataset.version === drag.version && zone.dataset.domain === drag.domain;
+    return false;
+  }
+  function clearMarks() {
+    if (marker) { marker.remove(); marker = null; }
+    document.querySelectorAll(".bd-zone.over").forEach((z) => z.classList.remove("over"));
+  }
+  function endDrag() {
+    clearMarks();
+    document.querySelectorAll(".bd-zone.ok").forEach((z) => z.classList.remove("ok"));
+    document.querySelectorAll(".dragging").forEach((x) => x.classList.remove("dragging"));
+    root.classList.remove("bd-dragging");
+    drag = null;
+  }
+  function dropIndex(zone, y) {
+    const items = [...zone.querySelectorAll(".bd-list .bd-item")].filter((it) => !it.classList.contains("dragging"));
+    let idx = items.length;
+    for (let i = 0; i < items.length; i++) {
+      const r = items[i].getBoundingClientRect();
+      if (y < r.top + r.height / 2) { idx = i; break; }
+    }
+    return { idx, items };
+  }
+  document.addEventListener("dragstart", (e) => {
+    const card = e.target.closest && e.target.closest(".bk-card");
+    const item = e.target.closest && e.target.closest(".bd-item[data-qid]");
+    if (card) {
+      if (card.dataset.kind === "q" && locked) { e.preventDefault(); return; }
+      drag = { src: "bank", kind: card.dataset.kind, id: parseInt(card.dataset.id, 10), domain: card.dataset.domain, stage: card.dataset.stage };
+      card.classList.add("dragging");
+    } else if (item && !locked) {
+      const zone = item.closest(".bd-zone");
+      drag = { src: "item", qid: parseInt(item.dataset.qid, 10), version: zone.dataset.version, domain: zone.dataset.domain };
+      item.classList.add("dragging");
+    } else return;
+    e.dataTransfer.effectAllowed = drag.src === "bank" ? "copy" : "move";
+    try { e.dataTransfer.setData("text/plain", String(drag.id || drag.qid)); } catch (err) { /* some browsers */ }
+    root.classList.add("bd-dragging");
+    outline.querySelectorAll(".bd-zone").forEach((z) => z.classList.toggle("ok", accepts(z)));
+  });
+  document.addEventListener("dragover", (e) => {
+    const zone = e.target.closest && e.target.closest(".bd-zone");
+    if (!accepts(zone)) { clearMarks(); return; }
+    e.preventDefault();
+    e.dataTransfer.dropEffect = drag.src === "bank" ? "copy" : "move";
+    if (!zone.classList.contains("over")) { clearMarks(); zone.classList.add("over"); }
+    if (zone.dataset.kind === "q") {
+      const list = zone.querySelector(".bd-list");
+      const { idx, items } = dropIndex(zone, e.clientY);
+      if (!marker) { marker = document.createElement("div"); marker.className = "bd-marker"; }
+      if (idx >= items.length) list.appendChild(marker); else list.insertBefore(marker, items[idx]);
+    }
+  });
+  document.addEventListener("drop", async (e) => {
+    const zone = e.target.closest && e.target.closest(".bd-zone");
+    if (!accepts(zone)) { endDrag(); return; }
+    e.preventDefault();
+    const d = drag, kind = zone.dataset.kind;
+    const pos = kind === "q" ? dropIndex(zone, e.clientY) : null;
+    const version = zone.dataset.version, domain = zone.dataset.domain, stage = zone.dataset.stage;
+    endDrag();
+    if (d.src === "bank" && d.kind === "act") { setStem(d.id, stage); return; }
+    if (d.src === "bank" && d.kind === "q") { addQuestion(d.id, version, pos.idx); return; }
+    if (d.src === "item") {
+      const ids = pos.items.map((it) => parseInt(it.dataset.qid, 10)).filter((id) => id !== d.qid);
+      ids.splice(pos.idx, 0, d.qid);
+      const j = await post("reorder", { version, domain, ids });
+      if (j.ok) refresh();
+    }
+  });
+  document.addEventListener("dragend", endDrag);
+
+  markUsed();
+  applyFilter();
+})();
+</script>
+{% endblock %}

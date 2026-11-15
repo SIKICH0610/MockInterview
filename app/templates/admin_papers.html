@@ -29,22 +29,44 @@
   <table class="table">
     <tr><th>{{ t('papers.name') }}</th><th>{{ t('papers.versions') }}</th><th>{{ t('papers.count') }}</th><th>{{ t('papers.sessions') }}</th><th></th></tr>
     {% for p in papers %}
-    <tr>
-      <td><b>{{ p.name }}</b></td>
+    <tr class="rn-row">
+      <td><b class="rn-view">{{ p.name }}</b>
+        <input class="rn-edit" type="text" name="name" value="{{ p.name }}" maxlength="120" required form="rn-{{ p.id }}" aria-label="{{ t('papers.name') }}"></td>
       <td>{% for v in stats[p.id].versions %}<span class="lv-badge lv-{{ v }}">{{ v }}</span> {% endfor %}</td>
       <td>{{ stats[p.id].count }}</td>
       <td>{{ stats[p.id].sessions }}</td>
       <td class="t-actions">
-        <a class="btn btn-sm" href="/admin/papers/{{ p.id }}">{{ t('papers.view') }}</a>
-        {% if stats[p.id].sessions == 0 %}
-        <form method="post" action="/admin/papers/{{ p.id }}/delete" class="inline"
-              onsubmit="return confirm('{{ t('confirm.delete_session') }}')">
-          <button class="btn btn-danger btn-sm" type="submit">{{ t('btn.delete') }}</button>
+        <form method="post" action="/admin/papers/{{ p.id }}/rename" id="rn-{{ p.id }}" class="inline rn-edit">
+          <input type="hidden" name="back" value="/admin/papers">
+          <button class="btn btn-sm" type="submit">{{ t('btn.save') }}</button>
+          <button class="btn btn-ghost btn-sm" type="button" data-rn-cancel>{{ t('btn.cancel_edit') }}</button>
         </form>
-        {% endif %}
+        <a class="btn btn-sm rn-view" href="/admin/papers/{{ p.id }}/build">{{ t('build.open') }}</a>
+        <a class="btn btn-ghost btn-sm rn-view" href="/admin/papers/{{ p.id }}/preview">{{ t('build.view_preview') }}</a>
+        <a class="btn btn-ghost btn-sm rn-view" href="/admin/papers/{{ p.id }}">{{ t('build.details') }}</a>
+        <button class="btn btn-ghost btn-sm btn-icon rn-view" type="button" data-rn-open title="{{ t('papers.rename') }}" aria-label="{{ t('papers.rename') }} {{ p.name }}"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg></button>
+        <form method="post" action="/admin/papers/{{ p.id }}/delete" class="inline rn-view"
+              onsubmit="return confirm({{ t('papers.delete_confirm').format(name=p.name, n=stats[p.id].count) | tojson | forceescape }})">
+          <button class="btn btn-danger btn-sm btn-icon" type="submit" title="{{ t('papers.delete') }}" aria-label="{{ t('papers.delete') }} {{ p.name }}"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/></svg></button>
+        </form>
       </td>
     </tr>
     {% endfor %}
   </table>
 </div>
+<script>
+/* pencil: edit a row's name (and date) in place */
+document.querySelectorAll(".rn-row").forEach((row) => {
+  const open = row.querySelector("[data-rn-open]"), cancel = row.querySelector("[data-rn-cancel]");
+  if (!open) return;
+  const inputs = [...row.querySelectorAll("input.rn-edit")];
+  open.addEventListener("click", () => {
+    document.querySelectorAll(".rn-row.editing").forEach((r) => r.classList.remove("editing"));
+    row.classList.add("editing");
+    const name = row.querySelector('input.rn-edit[type="text"]'); name.focus(); name.select();
+  });
+  cancel.addEventListener("click", () => { inputs.forEach((i) => (i.value = i.defaultValue)); row.classList.remove("editing"); });
+  row.addEventListener("keydown", (e) => { if (e.key === "Escape" && row.classList.contains("editing")) cancel.click(); });
+});
+</script>
 {% endblock %}

@@ -37,7 +37,7 @@
     {% if is_bank %}
     <label>{{ t('label.level') }}
       <select name="level">
-        <option value="" {{ 'selected' if not obj.level }}>TK + K</option>
+        <option value="" {{ 'selected' if not obj.level }}>{{ t('grades.all') }}</option>
         {% for lv in levels %}<option value="{{ lv }}" {{ 'selected' if obj.level == lv }}>{{ lv }}</option>{% endfor %}
       </select>
     </label>
@@ -106,6 +106,26 @@
       <label>0 <input type="text" name="e0" value="{{ obj.e0 or '' }}"></label>
     </div>
   </div>
+
+  <div class="qf-section">{{ t('bank.step_practice') }}</div>
+  <p class="muted small">{{ t('bank.practice_hint') }}</p>
+  <label class="q-full">{{ t('bank.key_ability') }}
+    <textarea name="key_ability" rows="2" placeholder="{{ t('bank.key_ability_ph') }}">{{ obj.key_ability or '' }}</textarea></label>
+  <div class="q-grid">
+    <label>{{ t('bank.practice') }} <textarea name="practice" rows="4">{{ obj.practice or '' }}</textarea></label>
+    <label>{{ t('bank.practice_answer') }} <textarea name="practice_answer" rows="4">{{ obj.practice_answer or '' }}</textarea></label>
+  </div>
+  <label class="q-full">{{ t('bank.home_game') }} <textarea name="home_game" rows="4">{{ obj.home_game or '' }}</textarea></label>
+  <details class="pb-more">
+    <summary>{{ t('bank.curriculum') }}</summary>
+    <div class="q-grid">
+      <label>{{ t('bank.ta_lesson') }} <input type="text" name="ta_lesson" value="{{ obj.ta_lesson or '' }}" maxlength="255"></label>
+      <label>{{ t('bank.ccss_module') }} <input type="text" name="ccss_module" value="{{ obj.ccss_module or '' }}" maxlength="255"></label>
+      <label>{{ t('bank.ccss_codes') }} <input type="text" name="ccss_codes" value="{{ obj.ccss_codes or '' }}" maxlength="255"></label>
+    </div>
+    <label class="q-full">{{ t('bank.ta_topic') }} <textarea name="ta_topic" rows="2">{{ obj.ta_topic or '' }}</textarea></label>
+    <label class="q-full">{{ t('bank.scope_note') }} <textarea name="scope_note" rows="2">{{ obj.scope_note or '' }}</textarea></label>
+  </details>
 
   {% if mode == 'paper_edit' and obj.bank_id %}
   <label class="inline-check" style="margin-top:12px"><input type="checkbox" name="save_bank" value="1"> {{ t('bank.save_back') }}</label>

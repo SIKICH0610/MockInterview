@@ -9,6 +9,7 @@
   <div class="head-actions">
     <a class="btn" href="/admin/sessions/{{ s.id }}/grouping">{{ t('btn.grouping') }}</a>
     <a class="btn btn-ghost" href="/admin/sessions/{{ s.id }}/email">{{ t('btn.send_reports') }}</a>
+    <a class="btn btn-ghost" href="/admin/sessions/{{ s.id }}/history">{{ t('hist.title') }}</a>
     <a class="btn btn-ghost" href="/wb/stage?session_id={{ s.id }}">{{ t('btn.open_wb') }}</a>
   </div>
 </div>
@@ -28,7 +29,7 @@
       <div class="import-title">{{ t('admin.add_one') }}</div>
       <label>{{ t('label.name') }} <input type="text" name="name" required></label>
       <label>{{ t('label.level') }}
-        <select name="level"><option>TK</option><option>K</option></select>
+        <select name="level">{% for lv in levels %}<option>{{ lv }}</option>{% endfor %}</select>
       </label>
       <label>{{ t('label.id') }} <input type="text" name="external_id" placeholder="{{ t('placeholder.optional') }}"></label>
       <label>{{ t('th.parent_email') }} <input type="text" name="parent_email" placeholder="{{ t('placeholder.optional') }}"></label>
@@ -38,7 +39,66 @@
 </div>
 
 <div class="card">
-  <div class="card-head"><span class="sec-num">02</span> {{ t('admin.groups') }}</div>
+  <div class="card-head card-head-row"><span><span class="sec-num">02</span> {{ t('admin.groups') }}</span>
+    {% if teachers %}<button type="button" class="btn btn-sm" id="tg-open" aria-expanded="false" aria-controls="tg-panel">＋ {{ t('groups.bulk_open') }}</button>{% endif %}
+  </div>
+  {% if teachers %}
+  {% set has_group = {} %}
+  {% for g in groups %}{% if g.teacher_id %}{% set _ = has_group.update({g.teacher_id: g.name}) %}{% endif %}{% endfor %}
+  <form method="post" action="/admin/sessions/{{ s.id }}/groups/bulk" class="tg-panel" id="tg-panel" hidden
+        data-create="{{ t('groups.bulk_create') }}">
+    <div class="tg-title">{{ t('groups.bulk_title') }}</div>
+    <p class="muted small">{{ t('groups.bulk_hint') }}</p>
+    <div class="tg-tools">
+      <input type="search" id="tg-search" placeholder="{{ t('groups.bulk_search') }}" aria-label="{{ t('groups.bulk_search') }}">
+      <button type="button" class="btn btn-ghost btn-sm" id="tg-all">{{ t('groups.bulk_all') }}</button>
+      <button type="button" class="btn btn-ghost btn-sm" id="tg-none">{{ t('groups.bulk_clear') }}</button>
+    </div>
+    <div class="tg-list">
+      {% for te in teachers %}
+      {% if has_group.get(te.id) %}
+      <label class="tg-item tg-has" data-name="{{ te.name | lower }}"><input type="checkbox" checked disabled>
+        <span>{{ te.name }}</span><span class="tg-note">{{ t('groups.bulk_has').format(name=has_group[te.id]) }}</span></label>
+      {% else %}
+      <label class="tg-item" data-name="{{ te.name | lower }}"><input type="checkbox" name="teacher_id" value="{{ te.id }}">
+        <span>{{ te.name }}</span>{% if te.role == 'admin' %}<span class="tg-note">{{ t('role.admin') }}</span>{% endif %}</label>
+      {% endif %}
+      {% endfor %}
+    </div>
+    <div class="tg-foot">
+      <span class="tg-naming">{{ t('groups.bulk_naming') }}
+        <label><input type="radio" name="naming" value="letter" checked> {{ t('groups.bulk_letters') }}</label>
+        <label><input type="radio" name="naming" value="teacher"> {{ t('groups.bulk_teacher') }}</label>
+      </span>
+      <button class="btn" type="submit" id="tg-submit" disabled>{{ t('groups.bulk_create').format(n=0) }}</button>
+    </div>
+  </form>
+  <script>
+  (function () {
+    const open = document.getElementById("tg-open"), panel = document.getElementById("tg-panel");
+    const boxes = () => [...panel.querySelectorAll('input[name="teacher_id"]')];
+    const submit = document.getElementById("tg-submit");
+    function count() {
+      const n = boxes().filter((b) => b.checked).length;
+      submit.textContent = panel.dataset.create.replace("{n}", n);
+      submit.disabled = n === 0;
+    }
+    open.addEventListener("click", () => {
+      panel.hidden = !panel.hidden;
+      open.setAttribute("aria-expanded", String(!panel.hidden));
+      if (!panel.hidden) document.getElementById("tg-search").focus();
+    });
+    panel.addEventListener("change", count);
+    const visible = (b) => !b.closest(".tg-item").hidden;
+    document.getElementById("tg-all").addEventListener("click", () => { boxes().filter(visible).forEach((b) => (b.checked = true)); count(); });
+    document.getElementById("tg-none").addEventListener("click", () => { boxes().forEach((b) => (b.checked = false)); count(); });
+    document.getElementById("tg-search").addEventListener("input", (e) => {
+      const q = e.target.value.trim().toLowerCase();
+      panel.querySelectorAll(".tg-item").forEach((it) => (it.hidden = !!q && !it.dataset.name.includes(q)));
+    });
+  })();
+  </script>
+  {% endif %}
   <div class="group-row">
     {% for g in groups %}
     <div class="group-card" data-group="{{ g.id }}">
@@ -87,11 +147,10 @@
       <td class="muted small">{{ st.grade }}</td>
       <td class="muted small course-cell" title="{{ st.course }}">{{ st.course }}</td>
       <td>
-        <select class="student-level {{ 'lv-missing' if st.level not in ('TK', 'K') }}"
-                data-student="{{ st.id }}" title="{{ t('lv.unknown') if st.level not in ('TK', 'K') }}">
-          {% if st.level not in ('TK', 'K') %}<option value="" selected>?</option>{% endif %}
-          <option value="TK" {{ 'selected' if st.level == 'TK' }}>TK</option>
-          <option value="K" {{ 'selected' if st.level == 'K' }}>K</option>
+        <select class="student-level {{ 'lv-missing' if st.level not in levels }}"
+                data-student="{{ st.id }}" title="{{ t('lv.unknown').format(levels=levels | join(' / ')) if st.level not in levels }}">
+          {% if st.level not in levels %}<option value="" selected>{{ st.level if st.level and st.level != '?' else '' }} ?</option>{% endif %}
+          {% for lv in levels %}<option value="{{ lv }}" {{ 'selected' if st.level == lv }}>{{ lv }}</option>{% endfor %}
         </select>
       </td>
       <td>

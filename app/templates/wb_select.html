@@ -5,7 +5,8 @@
 <h1>{{ t('wb.start') }} <span class="muted-h">· {{ teacher.name }}</span></h1>
 
 {% if msg == 'gate' %}<div class="flash">{{ t('wb.gate') }}</div>
-{% elif msg == 'admin_only' %}<div class="flash">{{ t('login.admin_only') }}</div>{% endif %}
+{% elif msg == 'admin_only' %}<div class="flash">{{ t('login.admin_only') }}</div>
+{% elif msg == 'not_assigned' %}<div class="flash">{{ t('wb.not_assigned') }}</div>{% endif %}
 
 <div class="card">
   <form class="select-form" method="get" action="/wb/stage">
@@ -20,6 +21,9 @@
       <button class="btn btn-big" type="submit" formaction="/wb/review">{{ t('btn.review') }}</button>
     </div>
   </form>
-  {% if not sessions %}<p class="muted">{{ t('wb.no_sessions') }} <a href="/admin/sessions">{{ t('wb.console') }}</a>{{ t('wb.console_suffix') }}</p>{% endif %}
+  {% if not sessions %}
+  {% if teacher.role == 'admin' %}<p class="muted">{{ t('wb.no_sessions') }} <a href="/admin/sessions">{{ t('wb.console') }}</a>{{ t('wb.console_suffix') }}</p>
+  {% else %}<p class="muted">{{ t('wb.none_assigned') }}</p>{% endif %}
+  {% endif %}
 </div>
 {% endblock %}

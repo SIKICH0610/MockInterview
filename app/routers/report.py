@@ -63,7 +63,19 @@ ABILITY_ORDER = [
     "Critical Thinking",
 ]
 
-GENERAL_STAGES = ["Self Introduction", "Cutting & Drawing"]
+GENERAL_STAGES = ["Self Introduction", "Cutting & Drawing"]  # defaults; see _team_parts()
+
+
+def _team_parts(db, paper_id):
+    """(separation part, story/prompts part, [rubric parts]) of an interview, by key.
+    The report shows one separation card, one prompts table, and a card per other part."""
+    from ..stage_defs import paper_stages
+
+    parts = paper_stages(db, paper_id)
+    sep = next((p["key"] for p in parts if p["kind"] == "separation"), None)
+    story = next((p["key"] for p in parts if p["kind"] == "prompts"), None)
+    general = [p["key"] for p in parts if p["key"] not in (sep, story)]
+    return sep, story, general
 
 RESP_LABEL = {
     "independent": "Independent",
@@ -278,21 +290,22 @@ def collect_report_facts(db, st):
 
     lines = [f"Child: {st.name} ({st.level} level). Session: {s.date} {s.label}."]
 
-    sep = next((o for o in obs if o.stage == "Separation"), None)
+    sep_stage, story_stage, general_stages = _team_parts(db, paper_id)
+    sep = next((o for o in obs if o.stage == sep_stage and not o.dim), None)
     if sep and sep.response:
         lines.append(f"Separation from parents: {SEP_LABEL.get(sep.response, sep.response)}."
                      + (f" Note: {sep.note}" if sep.note else ""))
 
-    prompts = paper_prompts(db, paper_id)
+    prompts = paper_prompts(db, paper_id, story_stage) if story_stage else []
     for o in obs:
-        if o.stage == "Story Time" and o.prompt_index and not o.dim:
+        if o.stage == story_stage and o.prompt_index and not o.dim:
             prompt = (
                 prompts[o.prompt_index - 1]
                 if o.prompt_index <= len(prompts)
                 else "story prompt"
             )
             lines.append(
-                f"Story Time, prompt '{prompt}': {RESP_LABEL.get(o.response, o.response)}."
+                f"{story_stage}, prompt '{prompt}': {RESP_LABEL.get(o.response, o.response)}."
                 + (f" The child: {o.note}" if o.note else "")
             )
 
@@ -309,7 +322,7 @@ def collect_report_facts(db, st):
             lines.append(f"{stage} ratings — " + "; ".join(vals) + ".")
 
     for o in obs:
-        if o.stage in GENERAL_STAGES and o.prompt_index is None and not o.dim and o.note:
+        if o.stage in general_stages and o.prompt_index is None and not o.dim and o.note:
             lines.append(f"{o.stage} note: {o.note}")
 
     for q in qs:
@@ -432,13 +445,14 @@ def report_page(stid: int, request: Request, db: Session = Depends(get_db)):
     sel_score = max(0, 50 - sel_ded)
     cs_score = max(0, 50 - cs_ded)
 
-    sep = next((o for o in obs if o.stage == "Separation" and not o.dim), None)
+    sep_stage, story_stage, general_stages = _team_parts(db, paper_id)
+    sep = next((o for o in obs if o.stage == sep_stage and not o.dim), None)
     circle = sorted(
-        [o for o in obs if o.stage == "Story Time" and o.prompt_index and not o.dim],
+        [o for o in obs if o.stage == story_stage and o.prompt_index and not o.dim],
         key=lambda o: (o.prompt_index or 0),
     )
     gen = {}
-    for stage in GENERAL_STAGES:
+    for stage in general_stages:
         row = next(
             (o for o in obs if o.stage == stage and o.prompt_index is None and not o.dim), None
         )
@@ -656,7 +670,7 @@ def report_page(stid: int, request: Request, db: Session = Depends(get_db)):
     stage_disp = {
         x: stage_name(rlang, x)
         for x in (
-            list(dims_map.keys()) + GENERAL_STAGES + ["Separation", "Story Time"]
+            list(dims_map.keys()) + general_stages + [x for x in (sep_stage, story_stage) if x]
             + [e.stage for e in events]
         )
     }
@@ -698,7 +712,9 @@ def report_page(stid: int, request: Request, db: Session = Depends(get_db)):
             "sep": sep,
             "sep_label": sep_map.get(sep.response) if sep else None,
             "circle": circle,
-            "prompts": paper_prompts(db, paper_id),
+            "prompts": paper_prompts(db, paper_id, story_stage) if story_stage else [],
+            "sep_stage": sep_stage,
+            "story_stage": story_stage,
             "gen": gen,
             "gen_done": gen_done,
             "gen_any": gen_any,
@@ -759,7 +775,7 @@ def generate_pdf(stid: int, request: Request, db: Session = Depends(get_db)):
         rlang = "en"
     port = request.url.port or 8008
     base = os.environ.get("MI_SELF_URL", f"http://127.0.0.1:{port}")
-    url = f"{base}/report/{st.id}?rlang={rlang}"
+    url = f"{base}/report/{st.id}?rlang={rlang}&for=pdf"
 
     try:
         from playwright.sync_api import sync_playwright
@@ -903,7 +919,7 @@ def batch_archive(sid: int, request: Request, db: Session = Depends(get_db)):
             for st in targets:
                 for rlang in ("en", "zh"):
                     page.goto(
-                        f"{base}/report/{st.id}?rlang={rlang}",
+                        f"{base}/report/{st.id}?rlang={rlang}&for=pdf",
                         wait_until="networkidle",
                         timeout=30000,
                     )

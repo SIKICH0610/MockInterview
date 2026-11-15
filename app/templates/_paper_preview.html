@@ -1,0 +1,49 @@
+{% from "_macros.html" import qpanel, media_block, orig_links, stem_text %}
+{# What teachers will see, in interview order: team activities first, then individual questions. #}
+<div class="pv">
+  <div class="pv-part"><span class="sec-num">1</span> {{ t('build.team') }}</div>
+  {% for part in parts %}
+  {% set st = part.key %}
+  {% set mat = materials.get(st) %}
+  <div class="card pv-stage">
+    <div class="stage-material-head">
+      <div class="pv-stage-name"><span class="pv-stage-n">{{ loop.index }}</span> {{ t('stage.' ~ st) }}{% if mat and mat.title %} <span class="muted-h">· {{ mat.title }}</span>{% endif %}</div>
+      {{ orig_links(stage_media.get(st, [])) }}
+    </div>
+    {% if mat and mat.text %}{{ stem_text(mat.text) }}{% elif not (mat and mat.title) %}<p class="muted small">{{ t('build.no_stem') }}</p>{% endif %}
+    {{ media_block(stage_media.get(st, [])) }}
+    {% if part.kind == 'prompts' and prompts_by.get(st) %}
+    <div class="rubric-head">{{ t('circle.prompts') }}</div>
+    <ol class="pv-prompts">{% for pr in prompts_by[st] %}<li>{{ pr }}</li>{% endfor %}</ol>
+    {% endif %}
+    {% if part.kind == 'separation' %}
+    <div class="pv-dims"><div class="pv-dim"><span class="pv-dim-k">{{ t('build.rated') }}</span> {{ t('sep.cell.independent') }} / {{ t('sep.cell.brief') }} / {{ t('sep.cell.support') }}</div></div>
+    {% endif %}
+    {% if dims.get(st) %}
+    <div class="rubric-head">{{ t('papers.dims_head') }}</div>
+    <div class="pv-dims">
+      {% for dm in dims[st] %}
+      <div class="pv-dim"><span class="pv-dim-k">{{ (dm.label_zh or dm.label) if cur_lang() == 'zh' else dm.label }}</span>
+        {% for en, zh in dm.options %}{{ (zh or en) if cur_lang() == 'zh' else en }}{% if not loop.last %} / {% endif %}{% endfor %}</div>
+      {% endfor %}
+    </div>
+    {% endif %}
+  </div>
+  {% endfor %}
+
+  <div class="pv-part"><span class="sec-num">2</span> {{ t('build.individual') }}</div>
+  {% for lv, doms in sections.items() %}
+  {% set n = doms.values() | map('length') | sum %}
+  <div class="pv-level"><span class="lv-badge lv-{{ lv }}">{{ lv }}</span> {{ n }} {{ t('papers.count') | lower }}</div>
+  {% if not n %}<p class="muted small">{{ t('papers.no_questions') }}</p>{% endif %}
+  {% for dom, qs in doms.items() %}
+    {% if qs %}<div class="rubric-head pv-dom">{{ t('domain.' ~ dom) }}</div>{% endif %}
+    {% for q in qs %}
+    <div class="pv-q">
+      {{ qpanel(q) }}
+      <div class="pv-q-type">{{ t('build.scored_as') }} {% if q.qtype == 'count' %}{{ t('qtype.count_n').format(n=q.trial_max) }}{% else %}{{ t('qtype.' ~ (q.qtype or 'single')) }}{% endif %}</div>
+    </div>
+    {% endfor %}
+  {% endfor %}
+  {% endfor %}
+</div>

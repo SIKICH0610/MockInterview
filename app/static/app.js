@@ -1,4 +1,10 @@
 /* Workbench client: autosave scoring cards, question switching, events, admin selects */
+
+// Live updates need a fingerprint of each refreshable part exactly as the server
+// sent it, taken before any script below changes classes on it.
+window.__liveHash = (s) => { let h = 2166136261; for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); } return (h >>> 0).toString(36); };
+document.querySelectorAll("[data-live-key]").forEach((el) => { el.dataset.liveHash = window.__liveHash(el.outerHTML); });
+
 (function () {
   "use strict";
 
@@ -244,6 +250,7 @@
   );
 
   updateChips();
+  document.addEventListener("live:updated", updateChips);
 
   /* ---------- events (student page) ---------- */
 
@@ -309,6 +316,7 @@
 
   if (document.body.dataset.page === "stage") {
     const stageName = document.body.dataset.stage;
+    const stageKind = document.body.dataset.stageKind || "";
 
     // Story Time: the response buttons show (highlighted) what this child got on
     // the prompt currently selected; the record list sits at the bottom of the card.
@@ -341,7 +349,8 @@
         syncAll();
       });
     });
-    if (stageName === "Story Time") syncAll();
+    if (stageKind === "prompts") syncAll();
+    document.addEventListener("live:updated", () => { if (stageKind === "prompts") syncAll(); });
 
     function flashInd(card, ok) {
       const ind = card.querySelector(".save-ind");
@@ -359,7 +368,7 @@
         const noteInput = card.querySelector(".obs-note");
         const promptChip = document.querySelector(".prompt-chip.on");
         // tapping the highlighted answer again clears it for this prompt
-        if (stageName === "Story Time" && rb.classList.contains("on")) {
+        if (stageKind === "prompts" && rb.classList.contains("on")) {
           const cur = card.querySelector(`.obs-item[data-prompt="${currentPrompt()}"]`);
           if (cur) {
             const { j } = await api("/stage/delete", { id: parseInt(cur.dataset.id, 10) });
@@ -372,7 +381,7 @@
         const payload = {
           student_id: parseInt(card.dataset.student, 10),
           stage: stageName,
-          prompt_index: stageName === "Story Time" && promptChip ? parseInt(promptChip.dataset.idx, 10) : null,
+          prompt_index: stageKind === "prompts" && promptChip ? parseInt(promptChip.dataset.idx, 10) : null,
           response: rb.dataset.resp,
           note: noteInput ? noteInput.value.trim() : "",
           teacher_id: teacherId,
@@ -761,8 +770,16 @@
       document.querySelectorAll(".gb-col[data-group]").forEach((c) => {
         const cnt = c.querySelector(".gb-count");
         if (cnt) cnt.textContent = c.querySelectorAll(".gb-chip").length;
+        // which grade the group holds (a group should hold one grade only)
+        const tag = c.querySelector(".gb-grade");
+        if (tag) {
+          const grades = [...new Set([...c.querySelectorAll(".gb-chip .lv-badge")].map((b) => b.textContent.trim()))];
+          tag.className = "gb-grade" + (grades.length === 1 ? " lv-badge lv-" + grades[0] : grades.length > 1 ? " gb-grade-mixed" : "");
+          tag.textContent = grades.length === 1 ? grades[0] : grades.length > 1 ? tag.dataset.mixed + " " + grades.join(" + ") : "";
+        }
       });
     }
+    updateCounts();
 
     function refreshBanner() {
       const pool = document.querySelector('.gb-col[data-group=""]');
@@ -799,6 +816,7 @@
         fromList.appendChild(chip);
         updateCounts();
         refreshBanner();
+        if (j.message) alert(j.message);
       }
     }
 
@@ -867,10 +885,10 @@
         const hasGroups = document.querySelectorAll('.gb-col[data-group]:not([data-group=""])').length > 0;
         if (!hasGroups) { alert(I18N.gbNeedGroup || "Create a group first."); return; }
         if (!confirm(I18N.gbConfirmRandom || "Randomly re-assign all students?")) return;
-        const { j } = await api("/groups/randomize", {
-          session_id: parseInt(document.body.dataset.session, 10),
-        });
-        if (j.ok) location.reload();
+        const sid = parseInt(document.body.dataset.session, 10);
+        const { j } = await api("/groups/randomize", { session_id: sid });
+        if (j.ok) location.href = "/admin/sessions/" + sid + "/grouping" + (j.message ? "?msg=" + encodeURIComponent(j.message) : "");
+        else if (j.message) alert(j.message);
       });
     }
   }
@@ -878,11 +896,14 @@
   /* ---------- admin selects ---------- */
 
   document.querySelectorAll(".student-group").forEach((sel) => {
+    sel.dataset.prev = sel.value;
     sel.addEventListener("change", async () => {
       const { j } = await api("/student/group", {
         student_id: parseInt(sel.dataset.student, 10),
         group_id: sel.value || null,
       });
+      if (j.ok) sel.dataset.prev = sel.value;
+      else { sel.value = sel.dataset.prev; if (j.message) alert(j.message); }
       sel.style.outline = j.ok ? "2px solid #2e7d32" : "2px solid #b3261e";
       setTimeout(() => (sel.style.outline = ""), 900);
     });
@@ -915,6 +936,10 @@
         level: sel.value,
       });
       if (j.ok) sel.classList.remove("lv-missing");
+      if (j.ok && j.ungrouped) {  // the child's old group belongs to another grade
+        const gsel = sel.closest("tr") && sel.closest("tr").querySelector(".student-group");
+        if (gsel) { gsel.value = ""; gsel.dataset.prev = ""; }
+      }
       sel.style.outline = j.ok ? "2px solid #2e7d32" : "2px solid #b3261e";
       setTimeout(() => (sel.style.outline = ""), 900);
     });
@@ -961,6 +986,162 @@
     }
     box.addEventListener("click", close);
     document.body.appendChild(box);
+  });
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape") close(); });
+})();
+
+
+// Live updates: other teachers' saves appear without reloading.
+// The server streams "session X changed" (SSE); the page then re-reads itself and
+// swaps only the parts that changed. A part you are working in (focused, typed
+// into, or touched in the last few seconds) is left alone and retried later.
+// If the stream is unavailable, it falls back to checking every 10 seconds.
+(function () {
+  const sid = document.body.dataset.liveSession;
+  if (!sid || !window.fetch || !window.DOMParser) return;
+  const I18N = window.I18N || {};
+  const tr = (k, fb) => I18N[k] || fb;
+  const BUSY_MS = 4000;
+
+  const hash = window.__liveHash;
+  const sel = (key) => `[data-live-key="${window.CSS && CSS.escape ? CSS.escape(key) : key}"]`;
+
+  // remember where the user is working
+  ["pointerdown", "input", "keydown"].forEach((t) =>
+    document.addEventListener(t, (e) => {
+      const u = e.target && e.target.closest && e.target.closest("[data-live-key]");
+      if (u) u.dataset.liveTouched = String(Date.now());
+    }, true));
+  function busy(el) {
+    const a = document.activeElement;
+    if (a && a !== document.body && el.contains(a) && a.matches("input, textarea, select")) return true;
+    if (Date.now() - (parseInt(el.dataset.liveTouched || "0", 10)) < BUSY_MS) return true;
+    for (const f of el.querySelectorAll("input:not([type=hidden]):not([type=checkbox]):not([type=radio]), textarea")) {
+      if (f.value !== f.defaultValue) return true;
+    }
+    return false;
+  }
+
+  // status badge
+  const badge = document.createElement("div");
+  badge.className = "live-badge";
+  badge.innerHTML = '<span class="live-dot"></span><span class="live-txt"></span>';
+  document.body.appendChild(badge);
+  let lastSync = Date.now(), mode = "connecting";
+  function paint() {
+    badge.dataset.mode = mode;
+    const s = Math.round((Date.now() - lastSync) / 1000);
+    const ago = s < 5 ? tr("liveJustNow", "just now") : tr("liveAgo", "{n}s ago").replace("{n}", s < 60 ? s : Math.round(s / 60) + "m");
+    const label = mode === "live" ? tr("liveOn", "Live") : mode === "poll" ? tr("livePoll", "Auto-check (10 s)") : tr("liveOff", "Offline");
+    badge.querySelector(".live-txt").textContent = mode === "connecting" ? tr("liveConnecting", "Connecting…") : `${label} · ${ago}`;
+  }
+  setInterval(paint, 5000);
+
+  let timer = null, again = null, running = false, lastV = null;
+  function schedule(delay) { clearTimeout(timer); timer = setTimeout(refresh, delay == null ? 300 : delay); }
+  async function refresh() {
+    if (document.hidden) { pendingHidden = true; return; }
+    if (running) { schedule(600); return; }
+    running = true;
+    try {
+      const r = await fetch(location.pathname + location.search, { headers: { "X-Live": "1" }, credentials: "same-origin" });
+      if (!r.ok || r.redirected) return;
+      const doc = new DOMParser().parseFromString(await r.text(), "text/html");
+      let skipped = 0;
+      doc.querySelectorAll("[data-live-key]").forEach((nu) => {
+        const cur = document.querySelector(sel(nu.dataset.liveKey));
+        if (!cur) return;
+        const h = hash(nu.outerHTML);
+        if (cur.dataset.liveHash === h) return;
+        if (busy(cur)) { skipped++; return; }
+        const mine = Date.now() - parseInt(cur.dataset.liveTouched || "0", 10) < 15000;
+        const fresh = document.importNode(nu, true);
+        fresh.dataset.liveHash = h;
+        cur.replaceWith(fresh);
+        if (!mine) { fresh.classList.add("live-flash"); setTimeout(() => fresh.classList.remove("live-flash"), 1800); }
+      });
+      lastSync = Date.now(); paint();
+      document.dispatchEvent(new CustomEvent("live:updated"));
+      clearTimeout(again);
+      if (skipped) again = setTimeout(() => schedule(0), BUSY_MS + 300);
+    } catch (e) { /* network hiccup: the next event or poll retries */ }
+    finally { running = false; }
+  }
+
+  // stream first, polling as the fallback. Some links (e.g. Cloudflare's free
+  // quick tunnel) accept the stream but never deliver it: no hello within 8 s
+  // means this route cannot stream, so stay on polling for this page.
+  let es = null, pollTimer = null, failures = 0, pendingHidden = false, stalled = false, helloTimer = null;
+  async function poll() {
+    try {
+      const j = await (await fetch(`/wb/live/${sid}/version`, { credentials: "same-origin" })).json();
+      if (lastV !== null && j.v !== lastV) schedule(0);
+      if (lastV === null || j.v !== lastV) lastV = j.v;
+      lastSync = Date.now();
+      if (mode !== "live") { mode = "poll"; }
+      paint();
+    } catch (e) { mode = "off"; paint(); }
+  }
+  function startPolling() {
+    if (pollTimer) return;
+    mode = "poll"; paint(); poll();
+    pollTimer = setInterval(() => { if (!document.hidden) poll(); }, 10000);
+    if (!stalled) setTimeout(connect, 60000);  // the stream dropped: try it again later
+  }
+  function stopPolling() { clearInterval(pollTimer); pollTimer = null; }
+  function connect() {
+    if (!window.EventSource || (es && es.readyState !== 2)) { if (!window.EventSource) startPolling(); return; }
+    es = new EventSource(`/wb/live/${sid}`);
+    clearTimeout(helloTimer);
+    helloTimer = setTimeout(() => {
+      if (mode !== "live" && es) { stalled = true; es.close(); es = null; startPolling(); }
+    }, 8000);
+    es.addEventListener("hello", () => { clearTimeout(helloTimer); failures = 0; mode = "live"; lastSync = Date.now(); stopPolling(); paint(); });
+    es.onmessage = (ev) => {
+      try { const m = JSON.parse(ev.data); if (m.v != null) lastV = m.v; } catch (e) { /* ignore */ }
+      schedule();
+    };
+    es.onerror = () => {
+      failures++;
+      if (failures >= 3 || es.readyState === 2) { es.close(); es = null; startPolling(); }
+      else { mode = "connecting"; paint(); }
+    };
+  }
+  document.addEventListener("visibilitychange", () => {
+    if (!document.hidden) { if (pendingHidden) { pendingHidden = false; schedule(0); } else poll(); }
+  });
+  paint();
+  connect();
+})();
+
+
+// Change history: the clock on a card shows who changed it, and what it was before.
+(function () {
+  let pop = null;
+  function close() { if (pop) { pop.remove(); pop = null; } }
+  document.addEventListener("click", async (e) => {
+    const b = e.target.closest(".hist-btn");
+    if (!b) {
+      if (pop && !e.target.closest(".hist-pop")) close();
+      return;
+    }
+    e.preventDefault();
+    const wasOpenHere = pop && pop.dataset.for === b.dataset.student + (b.dataset.ref || b.dataset.refPrefix);
+    close();
+    if (wasOpenHere) return;
+    const card = b.closest(".qcard, .obs-card") || b.parentElement;
+    pop = document.createElement("div");
+    pop.className = "hist-pop";
+    pop.dataset.for = b.dataset.student + (b.dataset.ref || b.dataset.refPrefix);
+    pop.innerHTML = '<div class="muted small">…</div>';
+    card.appendChild(pop);
+    const qs = new URLSearchParams({ student_id: b.dataset.student, kind: b.dataset.kind || "" });
+    if (b.dataset.ref) qs.set("ref", b.dataset.ref);
+    if (b.dataset.refPrefix) qs.set("ref_prefix", b.dataset.refPrefix);
+    try {
+      const r = await fetch("/wb/history?" + qs.toString(), { credentials: "same-origin" });
+      if (pop) pop.innerHTML = r.ok ? await r.text() : '<div class="muted small">—</div>';
+    } catch (err) { if (pop) pop.innerHTML = '<div class="muted small">—</div>'; }
   });
   document.addEventListener("keydown", (e) => { if (e.key === "Escape") close(); });
 })();

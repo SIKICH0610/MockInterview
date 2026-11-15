@@ -6,11 +6,13 @@
 <p class="sub">{{ t('home.sub') }}</p>
 
 <div class="tile-row">
+  {% if request.state.teacher and request.state.teacher.role == 'admin' %}
   <a class="tile" href="/admin/sessions">
     <div class="tile-num">01</div>
     <div class="tile-title">{{ t('home.admin.title') }}</div>
     <div class="tile-desc">{{ t('home.admin.desc') }}</div>
   </a>
+  {% endif %}
   <a class="tile" href="/wb">
     <div class="tile-num">02</div>
     <div class="tile-title">{{ t('home.wb.title') }}</div>
@@ -28,12 +30,14 @@
       <td>{{ se.date }}</td>
       <td>{{ se.label }}</td>
       <td class="t-actions">
-        <a class="btn btn-ghost" href="/admin/sessions/{{ se.id }}">{{ t('btn.manage') }}</a>
+        {% if request.state.teacher and request.state.teacher.role == 'admin' %}<a class="btn btn-ghost" href="/admin/sessions/{{ se.id }}">{{ t('btn.manage') }}</a>{% endif %}
         <a class="btn" href="/wb/stage?session_id={{ se.id }}">{{ t('btn.open_wb') }}</a>
       </td>
     </tr>
     {% endfor %}
   </table>
 </div>
+{% elif request.state.teacher and request.state.teacher.role != 'admin' %}
+<div class="card"><p class="muted">{{ t('wb.none_assigned') }}</p></div>
 {% endif %}
 {% endblock %}

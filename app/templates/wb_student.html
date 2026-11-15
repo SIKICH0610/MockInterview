@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% from "_macros.html" import qpanel, qcard, wbnav %}
 {% block title %}{{ st.name }} · {{ s.label }}{% endblock %}
-{% block bodyattrs %}data-teacher="{{ teacher.id }}" data-student="{{ st.id }}" data-page="student"{% endblock %}
+{% block bodyattrs %}data-teacher="{{ teacher.id }}" data-student="{{ st.id }}" data-page="student" data-live-session="{{ s.id }}"{% endblock %}
 {% block content %}
 <div class="split">
   <div class="roster-backdrop"></div>
@@ -39,7 +39,7 @@
           {{ wbnav(s, 'individual') }}
         </div>
       </div>
-      <div class="qchip-row">
+      <div class="qchip-row" data-live-key="chips">
         {% for code in codes %}
         {% set r = records.get((st.id, code)) %}
         <button type="button" class="qchip {{ 'done' if r and r.status }}" data-code="{{ code }}">
@@ -93,5 +93,10 @@
       </ul>
     </div>
   </div>
+</div>
+<div class="card" id="history">
+  <div class="card-head"><span class="sec-num">LOG</span> {{ t('hist.student_head') }}</div>
+  {% set entries = history %}{% set show_child = False %}
+  {% include "_history_list.html" %}
 </div>
 {% endblock %}

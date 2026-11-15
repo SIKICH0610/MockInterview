@@ -19,6 +19,7 @@ from ..models import (
     Group,
     ItemRecord,
     Paper,
+    PaperStage,
     Question,
     QuestionMedia,
     ReportPdf,
@@ -91,10 +92,34 @@ def create_session(
     return _redirect(f"/admin/sessions/{s.id}")
 
 
+@router.post("/sessions/{sid}/rename")
+def rename_session(sid: int, label: str = Form(...), date: str = Form(""), back: str = Form(""), db: Session = Depends(get_db)):
+    """Change a session's name and / or date. Nothing else about the session changes."""
+    s = db.get(AssessSession, sid)
+    dest = f"/admin/sessions/{sid}" if back == "detail" else "/admin/sessions"
+    if not s:
+        return _redirect("/admin/sessions", t("msg.session_not_found"))
+    label = " ".join(label.split())[:120]
+    if not label:
+        return _redirect(dest, t("sessions.rename_empty"))
+    date = date.strip()
+    if date and not re.fullmatch(r"\d{4}-\d{2}-\d{2}", date):
+        return _redirect(dest, t("sessions.rename_bad_date"))
+    s.label = label
+    if date:
+        s.date = date
+    db.commit()
+    return _redirect(dest, t("sessions.renamed").format(label=label))
+
+
 @router.post("/sessions/{sid}/delete")
 def delete_session(sid: int, db: Session = Depends(get_db)):
+    """Delete a whole session: its students, groups and everything recorded for them."""
     s = db.get(AssessSession, sid)
     if s:
+        ids = [x for (x,) in db.query(Student.id).filter_by(session_id=sid)]
+        if ids:  # email history is not removed with the student automatically
+            db.query(EmailLog).filter(EmailLog.student_id.in_(ids)).delete(synchronize_session=False)
         db.delete(s)
         db.commit()
     return _redirect("/admin/sessions", t("msg.session_deleted"))
@@ -116,6 +141,9 @@ def clear_session_results(sid: int, confirm_label: str = Form(""), db: Session =
         for model in (ItemRecord, StageObs, Event, Summary, Review, ReportPdf, AudioNote, EmailLog):
             n += db.query(model).filter(model.student_id.in_(ids)).delete(synchronize_session=False)
     n += db.query(SessionArchive).filter_by(session_id=sid).delete(synchronize_session=False)
+    from ..audit import log_bulk
+
+    log_bulk(db, sid, "clear_results", {"records": [n, 0]})
     db.commit()
     return _redirect("/admin/sessions", t("msg.cleared").format(label=s.label, n=n))
 
@@ -132,6 +160,7 @@ def session_detail(sid: int, request: Request, msg: str = "", db: Session = Depe
         request,
         "admin_session_detail.html",
         {
+            "levels": _session_levels(db, s),
             "s": s,
             "teachers": teachers,
             "groups": groups,
@@ -144,8 +173,17 @@ def session_detail(sid: int, request: Request, msg: str = "", db: Session = Depe
 
 # ---------- student import ----------
 
-def _detect_level(grade, course):
+def _session_levels(db, s):
+    """Grades of the interview this session uses."""
+    return qbank.paper_levels(db, (s.paper_id if s else None) or qbank.default_paper_id(db))
+
+
+def _detect_level(grade, course, levels=()):
+    """Grade from the export's grade / course text: the interview's own grades first, then TK / K."""
     text = f"{grade} {course}".upper()
+    for lv in sorted((x for x in levels if x not in ("TK", "K")), key=len, reverse=True):
+        if re.search(r"(?<![A-Z0-9])" + re.escape(lv) + r"(?![A-Z0-9])", text):
+            return lv
     if "PRE-K" in text or "PREK" in text or re.search(r"\bTK\b", text):
         return "TK"
     if re.search(r"\bK\b", text) or "KINDER" in text:
@@ -153,7 +191,7 @@ def _detect_level(grade, course):
     return "?"
 
 
-def _parse_ta_rows(rows):
+def _parse_ta_rows(rows, levels=()):
     """Think Academy class export: userName / 学员id / gradeName / className."""
     header = [h.strip() for h in rows[0]]
     idx = {h: i for i, h in enumerate(header)}
@@ -183,7 +221,7 @@ def _parse_ta_rows(rows):
                 "external_id": col(r, "学员id"),
                 "grade": grade,
                 "course": course,
-                "level": _detect_level(grade, course),
+                "level": _detect_level(grade, course, levels),
                 "parent_email": _join_emails(col(r, h) for h in email_cols),
             }
         )
@@ -210,7 +248,7 @@ def _clean_name(name):
     return " ".join(w[:1].upper() + w[1:] for w in words)
 
 
-def _parse_order_rows(rows):
+def _parse_order_rows(rows, levels=()):
     """Order export. 学生姓名 there is the *account* name (often a parent's name,
     email or phone number), so the child's name comes from the form answer
     "Child's Full Name"; level from "Which grade is your child applying for";
@@ -248,15 +286,15 @@ def _parse_order_rows(rows):
                 "name": name,
                 "external_id": col(r, ui),
                 "grade": grade,
-                "level": _detect_level(grade, ""),
+                "level": _detect_level(grade, "", levels),
                 "parent_email": _join_emails([col(r, fi), col(r, mi)]),
             }
         )
     return out, errors
 
 
-def _parse_rows(rows):
-    """rows: list of list of str -> (students, errors)."""
+def _parse_rows(rows, levels=("TK", "K")):
+    """rows: list of list of str -> (students, errors). levels = grades of the session's interview."""
     if not rows:
         return [], ["No rows found"]
     header = [c.lower().strip() for c in rows[0]]
@@ -284,8 +322,8 @@ def _parse_rows(rows):
         email = _join_emails([r[mi]]) if mi is not None and mi < len(r) else ""
         if not name:
             continue
-        if level not in ("TK", "K"):
-            errors.append(f"Row {idx} ({name}): level must be TK or K")
+        if level not in levels:
+            errors.append(f"Row {idx} ({name}): level must be {' / '.join(levels)}")
             continue
         out.append({"name": name, "level": level, "external_id": ext, "parent_email": email})
     return out, errors
@@ -355,12 +393,13 @@ async def upload_students(sid: int, file: UploadFile = File(...), db: Session = 
 
     header = [str(h).strip() for h in rows[0]]
     unenrolled = 0
+    levels = _session_levels(db, db.get(AssessSession, sid))
     if _is_order_export(header):
-        parsed, errors = _parse_order_rows(rows)
+        parsed, errors = _parse_order_rows(rows, levels)
     elif "userName" in header or "学员id" in header:
-        parsed, errors, unenrolled = _parse_ta_rows(rows)
+        parsed, errors, unenrolled = _parse_ta_rows(rows, levels)
     else:
-        parsed, errors = _parse_rows(rows)
+        parsed, errors = _parse_rows(rows, levels)
 
     added, skipped, filled = _insert_students(db, sid, parsed)
     unknown = sum(1 for p in parsed if p.get("level") == "?")
@@ -383,7 +422,7 @@ def paste_students(sid: int, text: str = Form(...), db: Session = Depends(get_db
         if line.strip():
             sep = "\t" if "\t" in line else ","
             rows.append([c.strip() for c in line.split(sep)])
-    parsed, errors = _parse_rows(rows)
+    parsed, errors = _parse_rows(rows, _session_levels(db, db.get(AssessSession, sid)))
     added, skipped, filled = _insert_students(db, sid, parsed)
     msg = t("msg.imported").format(added=added, skipped=skipped)
     if filled:
@@ -403,8 +442,9 @@ def add_student(
     db: Session = Depends(get_db),
 ):
     level = level.strip().upper()
-    if level not in ("TK", "K"):
-        return _redirect(f"/admin/sessions/{sid}", t("msg.level_err"))
+    levels = _session_levels(db, db.get(AssessSession, sid))
+    if level not in levels:
+        return _redirect(f"/admin/sessions/{sid}", t("msg.level_err").format(levels=" / ".join(levels)))
     good, bad = mailer.split_emails(parent_email)
     if bad:
         return _redirect(f"/admin/sessions/{sid}", t("msg.email_bad").format(bad=", ".join(bad)))
@@ -442,6 +482,7 @@ def grouping_board(sid: int, request: Request, msg: str = "", db: Session = Depe
         request,
         "admin_grouping.html",
         {
+            "levels": _session_levels(db, s),
             "s": s,
             "teachers": teachers,
             "groups": groups,
@@ -466,6 +507,58 @@ def add_group(
     db.commit()
     target = f"/admin/sessions/{sid}/grouping" if back == "grouping" else f"/admin/sessions/{sid}"
     return _redirect(target)
+
+
+def _next_group_names(existing, n):
+    """n new letter names that continue the session's own style: "A" -> "B", "Group A" -> "Group B"."""
+    prefix = "Group "
+    for name in existing:
+        m = re.fullmatch(r"(.*?)([A-Z])", name.strip())
+        if m and (m.group(1) == "" or m.group(1).endswith(" ")):
+            prefix = m.group(1)
+            break
+    taken, out = {x.strip().lower() for x in existing}, []
+    letters = [chr(c) for c in range(ord("A"), ord("Z") + 1)]
+    pool = letters + [a + b for a in letters for b in letters]
+    for x in pool:
+        if len(out) >= n:
+            break
+        if (prefix + x).lower() not in taken:
+            out.append(prefix + x)
+    return out
+
+
+@router.post("/sessions/{sid}/groups/bulk")
+async def add_groups_for_teachers(sid: int, request: Request, db: Session = Depends(get_db)):
+    """One new group per ticked teacher (teachers who already have a group in this session are skipped)."""
+    s = db.get(AssessSession, sid)
+    if not s:
+        return _redirect("/admin/sessions", t("msg.session_not_found"))
+    form = await request.form()
+    ids = []
+    for x in form.getlist("teacher_id"):
+        if str(x).isdigit() and int(x) not in ids:
+            ids.append(int(x))
+    groups = db.query(Group).filter_by(session_id=sid).all()
+    have = {g.teacher_id for g in groups if g.teacher_id}
+    picked = [te for te in (db.get(Teacher, i) for i in ids) if te and te.active and te.id not in have]
+    if not picked:
+        return _redirect(f"/admin/sessions/{sid}", t("groups.bulk_none"))
+    existing = [g.name for g in groups]
+    if form.get("naming") == "teacher":
+        names, taken = [], {x.strip().lower() for x in existing}
+        for te in picked:
+            name, k = te.name.strip()[:60], 2
+            while name.lower() in taken:
+                name, k = f"{te.name.strip()[:56]} {k}", k + 1
+            taken.add(name.lower())
+            names.append(name)
+    else:
+        names = _next_group_names(existing, len(picked))
+    for te, name in zip(picked, names):
+        db.add(Group(session_id=sid, name=name, teacher_id=te.id))
+    db.commit()
+    return _redirect(f"/admin/sessions/{sid}", t("groups.bulk_done").format(n=len(names), names=", ".join(names)))
 
 
 @router.post("/groups/{gid}/delete")
@@ -662,7 +755,7 @@ def papers_page(request: Request, msg: str = "", db: Session = Depends(get_db)):
     papers = db.query(Paper).order_by(Paper.id).all()
     stats = {}
     for p in papers:
-        versions = sorted({q.version for q in p.questions})
+        versions = qbank.paper_levels(db, p.id)  # the interview's grades, in its own order
         sessions_using = db.query(AssessSession).filter_by(paper_id=p.id).count()
         stats[p.id] = {"count": len(p.questions), "versions": versions, "sessions": sessions_using}
     return templates.TemplateResponse(
@@ -677,12 +770,13 @@ def create_paper(name: str = Form(...), clone_from: str = Form(""), db: Session 
     name = name.strip()
     if not name or db.query(Paper).filter_by(name=name).first():
         return _redirect("/admin/papers", t("papers.name_taken"))
-    p = Paper(name=name)
+    p = Paper(name=name, levels=",".join(qbank.LEVELS))
     db.add(p)
     db.flush()
     if clone_from:
         src = db.get(Paper, int(clone_from))
         if src:
+            p.levels = ",".join(qbank.paper_levels(db, src.id))
             for q in src.questions:
                 db.add(
                     Question(
@@ -706,6 +800,7 @@ def create_paper(name: str = Form(...), clone_from: str = Form(""), db: Session 
                         trial_max=q.trial_max,
                         qtype=qbank.qtype_of(q),
                         bank_id=q.bank_id,
+                        **{f: getattr(q, f) for f in qbank.EXTRA_FIELDS},
                         media=[
                             QuestionMedia(filename=m.filename, caption=m.caption or "", mime=m.mime, data=m.data,
                                           size=m.size, sort=m.sort)
@@ -722,7 +817,45 @@ def create_paper(name: str = Form(...), clone_from: str = Form(""), db: Session 
     if not clone_from:
         ensure_paper_defaults(db, p.id)
     db.commit()
-    return _redirect(f"/admin/papers/{p.id}")
+    return _redirect(f"/admin/papers/{p.id}/build")
+
+
+def _paper_ctx(db, p):
+    """Everything the interview pages show: sections, team stems, rubric, lock state."""
+    pid = p.id
+    questions = (
+        db.query(Question).filter_by(paper_id=pid).order_by(Question.version, Question.sort).all()
+    )
+    levels = qbank.paper_levels(db, pid)
+    sections = {lv: {dom: [] for dom in qbank.DOMAINS} for lv in levels}
+    for q in questions:
+        sections.setdefault(q.version, {}).setdefault(q.domain, []).append(q)
+    ensure_paper_defaults(db, pid)
+    db.commit()
+    from ..stage_defs import STAGE_KINDS, paper_stages
+
+    parts = paper_stages(db, pid)
+    materials = {m.stage: m for m in db.query(StageMaterial).filter_by(paper_id=pid)}
+    stage_media = {}
+    for m in db.query(QuestionMedia).filter_by(paper_id=pid).order_by(QuestionMedia.sort, QuestionMedia.id):
+        stage_media.setdefault(m.stage, []).append(m)
+    return {
+        "p": p,
+        "sections": sections,
+        "locked": qbank.paper_locked(db, pid),
+        "dims": paper_dims(db, pid),
+        "prompts": paper_prompts(db, pid),
+        "prompts_by": {x["key"]: paper_prompts(db, pid, x["key"]) for x in parts if x["kind"] == "prompts"},
+        "obs_stages": [x["key"] for x in parts],
+        "parts": parts,
+        "stage_kinds": STAGE_KINDS,
+        "levels": levels,
+        "more_levels": [x for x in qbank.all_levels(db) if x not in levels],
+        "level_scored": {lv: qbank.level_scored(db, pid, lv) for lv in levels},
+        "materials": materials,
+        "stage_media": stage_media,
+        "active": "admin",
+    }
 
 
 @router.get("/papers/{pid}")
@@ -730,37 +863,249 @@ def paper_detail(pid: int, request: Request, msg: str = "", db: Session = Depend
     p = db.get(Paper, pid)
     if not p:
         return _redirect("/admin/papers")
-    questions = (
-        db.query(Question).filter_by(paper_id=pid).order_by(Question.version, Question.sort).all()
-    )
-    sections = {lv: {dom: [] for dom in qbank.DOMAINS} for lv in qbank.LEVELS}
-    for q in questions:
-        sections.setdefault(q.version, {}).setdefault(q.domain, []).append(q)
-    ensure_paper_defaults(db, pid)
-    db.commit()
-    from ..routers.workbench import OBS_STAGES
+    ctx = _paper_ctx(db, p)
+    ctx.update(other_papers=db.query(Paper).filter(Paper.id != pid).order_by(Paper.id).all(), msg=msg)
+    return templates.TemplateResponse(request, "admin_paper_detail.html", ctx)
 
-    materials = {m.stage: m for m in db.query(StageMaterial).filter_by(paper_id=pid)}
-    stage_media = {}
-    for m in db.query(QuestionMedia).filter_by(paper_id=pid).order_by(QuestionMedia.sort, QuestionMedia.id):
-        stage_media.setdefault(m.stage, []).append(m)
-    return templates.TemplateResponse(
-        request,
-        "admin_paper_detail.html",
-        {
-            "p": p,
-            "sections": sections,
-            "locked": qbank.paper_locked(db, pid),
-            "dims": paper_dims(db, pid),
-            "prompts": paper_prompts(db, pid),
-            "obs_stages": OBS_STAGES,
-            "materials": materials,
-            "stage_media": stage_media,
-            "other_papers": db.query(Paper).filter(Paper.id != pid).order_by(Paper.id).all(),
-            "msg": msg,
-            "active": "admin",
-        },
+
+# ---------- drag-and-drop builder ----------
+
+@router.get("/papers/{pid}/build")
+def paper_builder(pid: int, request: Request, msg: str = "", db: Session = Depends(get_db)):
+    p = db.get(Paper, pid)
+    if not p:
+        return _redirect("/admin/papers")
+    from sqlalchemy import func
+
+    ctx = _paper_ctx(db, p)
+    media_q = dict(db.query(QuestionMedia.bank_id, func.count()).filter(QuestionMedia.bank_id.isnot(None)).group_by(QuestionMedia.bank_id).all())
+    media_a = dict(db.query(QuestionMedia.activity_id, func.count()).filter(QuestionMedia.activity_id.isnot(None)).group_by(QuestionMedia.activity_id).all())
+    ctx.update(
+        bank_questions=db.query(BankQuestion).order_by(BankQuestion.domain.desc(), BankQuestion.level, BankQuestion.title).all(),
+        bank_activities=db.query(BankActivity).order_by(BankActivity.stage, BankActivity.title).all(),
+        media_q=media_q, media_a=media_a, qtypes=qbank.QTYPES, domains=qbank.DOMAINS, all_levels=qbank.all_levels(db), msg=msg,
     )
+    return templates.TemplateResponse(request, "admin_builder.html", ctx)
+
+
+@router.get("/papers/{pid}/build/outline")
+def builder_outline(pid: int, request: Request, db: Session = Depends(get_db)):
+    p = db.get(Paper, pid)
+    if not p:
+        return Response(status_code=404)
+    return templates.TemplateResponse(request, "_builder_outline.html", _paper_ctx(db, p))
+
+
+@router.get("/papers/{pid}/preview")
+def paper_preview(pid: int, request: Request, fragment: int = 0, db: Session = Depends(get_db)):
+    p = db.get(Paper, pid)
+    if not p:
+        return _redirect("/admin/papers")
+    ctx = _paper_ctx(db, p)
+    ctx["fragment"] = bool(fragment)
+    return templates.TemplateResponse(request, "_paper_preview.html" if fragment else "admin_paper_preview.html", ctx)
+
+
+def _build_err(code, key):
+    return JSONResponse(status_code=code, content={"ok": False, "error": t(key)})
+
+
+@router.post("/papers/{pid}/build/add")
+def builder_add(pid: int, payload: dict = Body(...), db: Session = Depends(get_db)):
+    """Drop a bank question into a section (optionally at a position)."""
+    b = db.get(BankQuestion, int(payload.get("bank_id") or 0))
+    version = str(payload.get("version") or "")
+    if not db.get(Paper, pid) or not b or version not in qbank.paper_levels(db, pid):
+        return _build_err(404, "build.err_missing")
+    if qbank.paper_locked(db, pid):
+        return _build_err(409, "papers.locked_msg")
+    idx = payload.get("index")
+    q = qbank.add_at(db, b, pid, version, int(idx) if isinstance(idx, int) or str(idx).isdigit() else None)
+    db.commit()
+    return {"ok": True, "id": q.id, "code": q.code}
+
+
+@router.post("/papers/{pid}/build/reorder")
+def builder_reorder(pid: int, payload: dict = Body(...), db: Session = Depends(get_db)):
+    version, domain = str(payload.get("version") or ""), str(payload.get("domain") or "")
+    if not db.get(Paper, pid) or version not in qbank.paper_levels(db, pid) or domain not in qbank.DOMAINS:
+        return _build_err(404, "build.err_missing")
+    if qbank.paper_locked(db, pid):
+        return _build_err(409, "papers.locked_msg")
+    ids = [int(i) for i in (payload.get("ids") or []) if str(i).isdigit()]
+    qbank.reorder(db, pid, version, domain, ids)
+    db.commit()
+    return {"ok": True}
+
+
+@router.post("/papers/{pid}/build/remove")
+def builder_remove(pid: int, payload: dict = Body(...), db: Session = Depends(get_db)):
+    q = db.get(Question, int(payload.get("question_id") or 0))
+    if not q or q.paper_id != pid:
+        return _build_err(404, "build.err_missing")
+    if qbank.paper_locked(db, pid):
+        return _build_err(409, "papers.locked_msg")
+    qbank.remove_question(db, q)
+    db.commit()
+    return {"ok": True}
+
+
+@router.post("/papers/{pid}/build/stage")
+def builder_stage(pid: int, payload: dict = Body(...), db: Session = Depends(get_db)):
+    """Drop a team stem onto its activity, or clear the activity's stem."""
+    if not db.get(Paper, pid):
+        return _build_err(404, "build.err_missing")
+    keys = _paper_stage_keys(db, pid)
+    stage = str(payload.get("stage") or "")
+    if payload.get("clear"):
+        if stage not in keys:
+            return _build_err(404, "build.err_missing")
+        qbank.clear_stage_stem(db, pid, stage)
+    else:
+        a = db.get(BankActivity, int(payload.get("activity_id") or 0))
+        if not a:
+            return _build_err(404, "build.err_missing")
+        stage = stage or a.stage
+        if stage not in keys:
+            return _build_err(404, "build.err_no_part")
+        qbank.set_stage_stem(db, pid, a, stage)
+    db.commit()
+    return {"ok": True}
+
+
+@router.post("/papers/{pid}/levels/add")
+async def level_add(pid: int, request: Request, db: Session = Depends(get_db)):
+    """Add a grade (TK, K, G1 …) to this interview, optionally copying another grade's questions."""
+    if not db.get(Paper, pid):
+        return _redirect("/admin/papers")
+    form = await request.form()
+    back, copy_from = str(form.get("back") or ""), str(form.get("copy_from") or "")
+    # the typed name and a quick "＋ TK" button share the field name: a clicked button wins
+    names = [str(x) for x in form.getlist("level") if str(x).strip()]
+    lv = qbank.norm_level(names[-1] if names else "")
+    if not lv:
+        return _redirect(_part_back(pid, back), t("grades.bad_name"))
+    if not qbank.add_level(db, pid, lv, copy_from):
+        return _redirect(_part_back(pid, back), t("grades.exists").format(level=lv))
+    db.commit()
+    return _redirect(_part_back(pid, back), t("grades.added").format(level=lv))
+
+
+@router.post("/papers/{pid}/levels/remove")
+def level_remove(pid: int, level: str = Form(...), back: str = Form(""), db: Session = Depends(get_db)):
+    """Take a grade out of this interview. Refused once children of that grade have scores."""
+    if not db.get(Paper, pid):
+        return _redirect("/admin/papers")
+    levels = qbank.paper_levels(db, pid)
+    if level not in levels:
+        return _redirect(_part_back(pid, back))
+    if len(levels) <= 1:
+        return _redirect(_part_back(pid, back), t("grades.last"))
+    if qbank.level_scored(db, pid, level):
+        return _redirect(_part_back(pid, back), t("grades.in_use").format(level=level))
+    qbank.remove_level(db, pid, level)
+    db.commit()
+    return _redirect(_part_back(pid, back), t("grades.removed").format(level=level))
+
+
+def _forget_labels():
+    from ..i18n import forget_stage_labels
+
+    forget_stage_labels()
+
+
+def _part_back(pid, back):
+    return back if back.startswith(f"/admin/papers/{pid}") else f"/admin/papers/{pid}/build"
+
+
+def _part_records(db, pid, key):
+    """How many saved observations / events use this part in sessions of this interview."""
+    from ..models import Event, StageObs
+
+    sess = db.query(AssessSession.id)
+    if pid == qbank.default_paper_id(db):
+        sess = sess.filter((AssessSession.paper_id == pid) | (AssessSession.paper_id.is_(None)))
+    else:
+        sess = sess.filter(AssessSession.paper_id == pid)
+    studs = db.query(Student.id).filter(Student.session_id.in_(sess))
+    return (db.query(StageObs).filter(StageObs.stage == key, StageObs.student_id.in_(studs)).count()
+            + db.query(Event).filter(Event.stage == key, Event.student_id.in_(studs)).count())
+
+
+@router.post("/papers/{pid}/parts/add")
+def part_add(pid: int, label: str = Form(...), label_zh: str = Form(""), kind: str = Form("rubric"),
+             back: str = Form(""), db: Session = Depends(get_db)):
+    from ..stage_defs import add_stage
+
+    if not db.get(Paper, pid) or not label.strip():
+        return _redirect(_part_back(pid, back))
+    row = add_stage(db, pid, label, label_zh, kind)
+    db.commit()
+    _forget_labels()
+    return _redirect(_part_back(pid, back), t("parts.added").format(name=row.label))
+
+
+@router.post("/papers/{pid}/parts/{sid}/rename")
+def part_rename(pid: int, sid: int, label: str = Form(...), label_zh: str = Form(""), back: str = Form(""),
+                db: Session = Depends(get_db)):
+    row = db.get(PaperStage, sid)
+    if row and row.paper_id == pid and label.strip():
+        row.label, row.label_zh = label.strip()[:80], label_zh.strip()[:80]
+        db.commit()
+    _forget_labels()
+    return _redirect(_part_back(pid, back))
+
+
+@router.post("/papers/{pid}/parts/{sid}/move")
+def part_move(pid: int, sid: int, step: int = Form(...), back: str = Form(""), db: Session = Depends(get_db)):
+    rows = db.query(PaperStage).filter_by(paper_id=pid).order_by(PaperStage.sort, PaperStage.id).all()
+    i = next((n for n, r in enumerate(rows) if r.id == sid), None)
+    if i is not None:
+        j = i + (-1 if step < 0 else 1)
+        if 0 <= j < len(rows):
+            rows[i], rows[j] = rows[j], rows[i]
+            for n, r in enumerate(rows):
+                r.sort = n
+            db.commit()
+    return _redirect(_part_back(pid, back))
+
+
+@router.post("/papers/{pid}/parts/{sid}/delete")
+def part_delete(pid: int, sid: int, back: str = Form(""), db: Session = Depends(get_db)):
+    """Remove a team part from this interview. Refused while children have records in it."""
+    row = db.get(PaperStage, sid)
+    if not row or row.paper_id != pid:
+        return _redirect(_part_back(pid, back))
+    if db.query(PaperStage).filter_by(paper_id=pid).count() <= 1:
+        return _redirect(_part_back(pid, back), t("parts.last"))
+    n = _part_records(db, pid, row.key)
+    if n:
+        return _redirect(_part_back(pid, back), t("parts.in_use").format(n=n))
+    key = row.key
+    db.query(StageDimDef).filter_by(paper_id=pid, stage=key).delete()
+    db.query(StageMaterial).filter_by(paper_id=pid, stage=key).delete()
+    db.query(QuestionMedia).filter_by(paper_id=pid, stage=key).delete()
+    for sp in db.query(StoryPromptDef).filter_by(paper_id=pid).all():
+        if (sp.stage or "Story Time") == key:
+            db.delete(sp)
+    db.delete(row)
+    db.commit()
+    _forget_labels()
+    return _redirect(_part_back(pid, back), t("parts.removed"))
+
+
+@router.post("/papers/{pid}/rename")
+def paper_rename(pid: int, name: str = Form(...), back: str = Form(""), db: Session = Depends(get_db)):
+    p = db.get(Paper, pid)
+    name = " ".join(name.split())[:120]
+    dest = back if back.startswith("/admin/papers") else f"/admin/papers/{pid}"
+    if not p or not name:
+        return _redirect(dest)
+    if db.query(Paper).filter(Paper.name == name, Paper.id != pid).first():
+        return _redirect(dest, t("papers.name_taken"))
+    p.name = name
+    db.commit()
+    return _redirect(dest)
 
 
 @router.post("/papers/{pid}/delete")
@@ -768,12 +1113,19 @@ def delete_paper(pid: int, db: Session = Depends(get_db)):
     p = db.get(Paper, pid)
     if not p:
         return _redirect("/admin/papers")
-    if db.query(AssessSession).filter_by(paper_id=pid).count():
-        return _redirect("/admin/papers", t("papers.in_use"))
+    using = db.query(AssessSession).filter_by(paper_id=pid).order_by(AssessSession.date).all()
+    if pid == qbank.default_paper_id(db):  # sessions saved before interviews existed fall back to the first one
+        using += db.query(AssessSession).filter(AssessSession.paper_id.is_(None)).all()
+    if using:
+        names = ", ".join(f"{x.date} · {x.label}" for x in using[:5]) + (" …" if len(using) > 5 else "")
+        return _redirect("/admin/papers", t("papers.in_use_by").format(name=p.name, n=len(using), sessions=names))
+    if db.query(Paper).count() <= 1:
+        return _redirect("/admin/papers", t("papers.last"))
     for q in list(p.questions):
         db.delete(q)
     db.query(StageDimDef).filter_by(paper_id=pid).delete()
     db.query(StoryPromptDef).filter_by(paper_id=pid).delete()
+    db.query(PaperStage).filter_by(paper_id=pid).delete()
     db.query(StageMaterial).filter_by(paper_id=pid).delete()
     db.query(QuestionMedia).filter_by(paper_id=pid).delete()
     db.delete(p)
@@ -811,6 +1163,10 @@ def _fill_question(obj, form, qtype_allowed=True):
     obj.ability = (form.get("ability") or "").strip()[:48]
     for f in ("prompt", "target", "setup", "r2", "r1", "r0"):
         setattr(obj, f, (form.get(f) or "").strip())
+    for f in qbank.EXTRA_FIELDS:
+        if f in form:  # older forms without these fields leave them untouched
+            v = (form.get(f) or "").strip()
+            setattr(obj, f, v[:255] if f in ("ta_lesson", "ccss_module", "ccss_codes") else v)
     if qtype_allowed:
         tm = str(form.get("trial_max") or "").strip()
         qbank.apply_qtype(obj, form.get("qtype"), int(tm) if tm.isdigit() and 0 < int(tm) <= 30 else None)
@@ -826,7 +1182,7 @@ def _qform(request, ctx):
     base = {
         "qtypes": qbank.QTYPES,
         "domains": qbank.DOMAINS,
-        "levels": qbank.LEVELS,
+        "levels": ctx.pop("_levels"),
         "abilities": ctx.pop("_db_abilities"),
         "defaults": {qt: qbank.default_rubric(qt) for qt in qbank.QTYPES},
         "active": "admin",
@@ -859,7 +1215,7 @@ def bank_page(
     query = db.query(BankQuestion)
     if domain in qbank.DOMAINS:
         query = query.filter(BankQuestion.domain == domain)
-    if level in qbank.LEVELS:
+    if level in qbank.all_levels(db):
         query = query.filter(or_(BankQuestion.level == level, BankQuestion.level == ""))
     if qtype in qbank.QTYPES:
         query = query.filter(BankQuestion.qtype == qtype)
@@ -899,9 +1255,9 @@ def bank_page(
             "abilities": qbank.known_abilities(db),
             "qtypes": qbank.QTYPES,
             "domains": qbank.DOMAINS,
-            "levels": qbank.LEVELS,
+            "levels": qbank.all_levels(db),
             "pick_paper": pick_paper,
-            "pick_version": version if version in qbank.LEVELS else "",
+            "pick_version": version if pick_paper and version in qbank.paper_levels(db, pick_paper.id) else "",
             "msg": msg,
             "active": "admin",
         },
@@ -926,7 +1282,7 @@ def bank_new(request: Request, domain: str = "Mathematics", qtype: str = "single
     crop = _crop_prefill(db, request.query_params)
     if crop:
         b.prompt = crop["text"]
-    return _qform(request, {"_db_abilities": qbank.known_abilities(db), "obj": b, "mode": "bank_new",
+    return _qform(request, {"_db_abilities": qbank.known_abilities(db), "_levels": qbank.all_levels(db), "obj": b, "mode": "bank_new",
                             "action": "/admin/bank/new", "back": "/admin/bank", "media": [], "crop": crop})
 
 
@@ -935,7 +1291,7 @@ async def bank_create(request: Request, db: Session = Depends(get_db)):
     form = await request.form()
     b = BankQuestion(domain="Mathematics", qtype="single", level="", created_by=request.state.teacher.id)
     _fill_question(b, form)
-    b.level = form.get("level") if form.get("level") in qbank.LEVELS else ""
+    b.level = qbank.norm_level(form.get("level"))
     b.tags = (form.get("tags") or "").strip()[:255]
     if not b.title or not b.ability:
         return _redirect("/admin/bank", t("bank.need_title"))
@@ -956,7 +1312,7 @@ def bank_edit(bid: int, request: Request, msg: str = "", db: Session = Depends(g
     used_in = (
         db.query(Paper.name).join(Question, Question.paper_id == Paper.id).filter(Question.bank_id == bid).distinct().all()
     )
-    return _qform(request, {"_db_abilities": qbank.known_abilities(db), "obj": b, "mode": "bank_edit",
+    return _qform(request, {"_db_abilities": qbank.known_abilities(db), "_levels": qbank.all_levels(db), "obj": b, "mode": "bank_edit",
                             "action": f"/admin/bank/{bid}", "back": "/admin/bank", "media": b.media,
                             "used_in": [n for (n,) in used_in], "msg": msg})
 
@@ -968,7 +1324,7 @@ async def bank_save(bid: int, request: Request, db: Session = Depends(get_db)):
         return _redirect("/admin/bank")
     form = await request.form()
     _fill_question(b, form)
-    b.level = form.get("level") if form.get("level") in qbank.LEVELS else ""
+    b.level = qbank.norm_level(form.get("level"))
     b.tags = (form.get("tags") or "").strip()[:255]
     ups, bad = _read_uploads(form.getlist("files"))
     _add_uploads(db, ups, bank_id=b.id)
@@ -992,10 +1348,34 @@ def _locked_redirect(pid):
     return _redirect(f"/admin/papers/{pid}", t("papers.locked_msg"))
 
 
+@router.post("/papers/{pid}/import_sheet")
+async def paper_import_sheet(pid: int, file: UploadFile = File(...), db: Session = Depends(get_db)):
+    """Key abilities, curriculum links and home practice from the curriculum spreadsheet
+    (one row per question id such as "TK M01"). Text only: allowed on scored interviews too."""
+    if not db.get(Paper, pid):
+        return _redirect("/admin/papers")
+    data = await file.read()
+    try:
+        rows, problems = qbank.parse_ability_sheet(data)
+    except Exception:  # noqa: BLE001
+        return _redirect(f"/admin/papers/{pid}", t("sheet.bad_file"))
+    if not rows:
+        return _redirect(f"/admin/papers/{pid}", t("sheet.no_rows"))
+    updated, missing, mismatched = qbank.apply_ability_sheet(db, pid, rows)
+    db.commit()
+    msg = t("sheet.done").format(n=len(updated))
+    if missing:
+        msg += " " + t("sheet.missing").format(ids=", ".join(missing))
+    if mismatched:
+        msg += " " + t("sheet.mismatch").format(
+            items="; ".join(f"{i}: “{sheet}” ≠ “{site}”" for i, sheet, site in mismatched))
+    return _redirect(f"/admin/papers/{pid}", msg)
+
+
 @router.post("/papers/{pid}/cite")
 def paper_cite(pid: int, bank_id: int = Form(...), version: str = Form(...), db: Session = Depends(get_db)):
     p, b = db.get(Paper, pid), db.get(BankQuestion, bank_id)
-    if not p or not b or version not in qbank.LEVELS:
+    if not p or not b or version not in qbank.paper_levels(db, pid):
         return _redirect("/admin/papers")
     if qbank.paper_locked(db, pid):
         return _locked_redirect(pid)
@@ -1012,12 +1392,12 @@ def paper_new_question(pid: int, request: Request, version: str = "K", domain: s
         return _redirect("/admin/papers")
     if qbank.paper_locked(db, pid):
         return _locked_redirect(pid)
-    q = _new_with_type(Question(paper_id=pid, version=version if version in qbank.LEVELS else "K",
+    q = _new_with_type(Question(paper_id=pid, version=version if version in qbank.paper_levels(db, pid) else qbank.paper_levels(db, pid)[-1],
                                 domain=domain if domain in qbank.DOMAINS else "Mathematics"), qtype)
     crop = _crop_prefill(db, request.query_params)
     if crop:
         q.prompt = crop["text"]
-    return _qform(request, {"_db_abilities": qbank.known_abilities(db), "obj": q, "mode": "paper_new", "paper": p,
+    return _qform(request, {"_db_abilities": qbank.known_abilities(db), "_levels": qbank.all_levels(db), "obj": q, "mode": "paper_new", "paper": p,
                             "action": f"/admin/papers/{pid}/new", "back": f"/admin/papers/{pid}", "media": [],
                             "crop": crop})
 
@@ -1031,7 +1411,7 @@ async def paper_create_question(pid: int, request: Request, db: Session = Depend
     if qbank.paper_locked(db, pid):
         return _locked_redirect(pid)
     form = await request.form()
-    version = form.get("version") if form.get("version") in qbank.LEVELS else "K"
+    version = form.get("version") if form.get("version") in qbank.paper_levels(db, pid) else qbank.paper_levels(db, pid)[-1]
     b = BankQuestion(domain="Mathematics", qtype="single", level=version, created_by=request.state.teacher.id)
     _fill_question(b, form)
     b.tags = (form.get("tags") or "").strip()[:255]
@@ -1054,7 +1434,7 @@ def question_edit(qid: int, request: Request, msg: str = "", db: Session = Depen
     q = db.get(Question, qid)
     if not q:
         return _redirect("/admin/papers")
-    return _qform(request, {"_db_abilities": qbank.known_abilities(db), "obj": q, "mode": "paper_edit",
+    return _qform(request, {"_db_abilities": qbank.known_abilities(db), "_levels": qbank.all_levels(db), "obj": q, "mode": "paper_edit",
                             "paper": q.paper, "action": f"/admin/questions/{qid}/edit",
                             "back": f"/admin/papers/{q.paper_id}", "media": q.media,
                             "locked": qbank.paper_locked(db, q.paper_id), "msg": msg})
@@ -1150,8 +1530,10 @@ def media_delete(mid: int, back: str = Form("/admin/papers"), db: Session = Depe
 async def stage_material_save(pid: int, request: Request, db: Session = Depends(get_db)):
     form = await request.form()
     stage = str(form.get("stage") or "")
-    if not db.get(Paper, pid) or not stage:
+    if not db.get(Paper, pid) or stage not in _paper_stage_keys(db, pid):
         return _redirect("/admin/papers")
+    back = str(form.get("back") or "")
+    dest = back if back.startswith(f"/admin/papers/{pid}") else f"/admin/papers/{pid}"
     m = db.query(StageMaterial).filter_by(paper_id=pid, stage=stage).first()
     if m is None:
         m = StageMaterial(paper_id=pid, stage=stage)
@@ -1161,7 +1543,7 @@ async def stage_material_save(pid: int, request: Request, db: Session = Depends(
     ups, bad = _read_uploads(form.getlist("files"))
     _add_uploads(db, ups, paper_id=pid, stage=stage)
     db.commit()
-    return _redirect(f"/admin/papers/{pid}", t("papers.material_saved") + _upload_msg(bad))
+    return _redirect(dest, t("papers.material_saved") + _upload_msg(bad))
 
 
 @router.post("/papers/{pid}/stage_copy")
@@ -1184,12 +1566,13 @@ def stage_copy(pid: int, stage: str = Form(...), from_pid: int = Form(...), db: 
         for d in src_dims:
             db.add(StageDimDef(paper_id=pid, stage=stage, key=d.key, label=d.label, label_zh=d.label_zh,
                                options=d.options, sort=d.sort))
-    if stage == "Story Time":
-        src_prompts = db.query(StoryPromptDef).filter_by(paper_id=from_pid).all()
-        if src_prompts:
-            db.query(StoryPromptDef).filter_by(paper_id=pid).delete()
-            for sp in src_prompts:
-                db.add(StoryPromptDef(paper_id=pid, idx=sp.idx, text=sp.text))
+    src_prompts = [sp for sp in db.query(StoryPromptDef).filter_by(paper_id=from_pid).all() if (sp.stage or "Story Time") == stage]
+    if src_prompts:
+        for old in db.query(StoryPromptDef).filter_by(paper_id=pid).all():
+            if (old.stage or "Story Time") == stage:
+                db.delete(old)
+        for sp in src_prompts:
+            db.add(StoryPromptDef(paper_id=pid, idx=sp.idx, text=sp.text, stage=stage))
     db.commit()
     return _redirect(f"/admin/papers/{pid}", t("papers.stage_copied"))
 
@@ -1269,16 +1652,18 @@ async def save_paper_dims(pid: int, request: Request, db: Session = Depends(get_
 
 
 @router.post("/papers/{pid}/prompts")
-def save_paper_prompts(pid: int, text: str = Form(...), db: Session = Depends(get_db)):
+def save_paper_prompts(pid: int, text: str = Form(...), stage: str = Form("Story Time"), db: Session = Depends(get_db)):
     p = db.get(Paper, pid)
     if not p:
         return _redirect("/admin/papers")
     lines = [line.strip() for line in text.splitlines() if line.strip()]
     if not lines:
         return _redirect(f"/admin/papers/{pid}", t("papers.prompts_empty"))
-    db.query(StoryPromptDef).filter_by(paper_id=pid).delete()
+    for old in db.query(StoryPromptDef).filter_by(paper_id=pid).all():
+        if (old.stage or "Story Time") == stage:
+            db.delete(old)
     for i, line in enumerate(lines, 1):
-        db.add(StoryPromptDef(paper_id=pid, idx=i, text=line))
+        db.add(StoryPromptDef(paper_id=pid, idx=i, text=line, stage=stage))
     db.commit()
     return _redirect(f"/admin/papers/{pid}", t("papers.prompts_saved"))
 
@@ -1287,21 +1672,68 @@ def save_paper_prompts(pid: int, text: str = Form(...), db: Session = Depends(ge
 
 @router.get("/teachers")
 def teachers_page(request: Request, msg: str = "", db: Session = Depends(get_db)):
+    from .. import perm
+
     teachers = db.query(Teacher).order_by(Teacher.name).all()
+    me = request.state.teacher
     return templates.TemplateResponse(
         request,
         "admin_teachers.html",
-        {"teachers": teachers, "msg": msg, "active": "admin"},
+        {"teachers": teachers, "msg": msg, "active": "admin", "me": me, "i_am_owner": perm.is_owner(me),
+         "manageable": {te.id for te in teachers if perm.can_manage(me, te)},
+         "switchable": {te.id for te in teachers if perm.can_switch_into(me, te)}},
     )
 
 
+def _deny_account(me, target, owner_only=False):
+    """A redirect with the reason when `me` may not change `target`'s account, else None."""
+    from .. import perm
+
+    if owner_only and not perm.is_owner(me):
+        return _redirect("/admin/teachers", t("teachers.owner_only"))
+    if not perm.can_manage(me, target):
+        return _redirect("/admin/teachers", t("teachers.no_manage_admin"))
+    return None
+
+
+def _teacher_name_taken(db, name, except_id=None):
+    from sqlalchemy import func
+
+    q = db.query(Teacher).filter(func.lower(Teacher.name) == name.lower())
+    if except_id:
+        q = q.filter(Teacher.id != except_id)
+    return q.first() is not None
+
+
 @router.post("/teachers/add")
-def add_teacher(name: str = Form(...), role: str = Form("teacher"), db: Session = Depends(get_db)):
-    name = name.strip()
-    if name and not db.query(Teacher).filter_by(name=name).first():
+def add_teacher(request: Request, name: str = Form(...), role: str = Form("teacher"), db: Session = Depends(get_db)):
+    from .. import perm
+
+    name = " ".join(name.split())[:80]
+    role = "admin" if role == "admin" else "teacher"
+    if role == "admin" and not perm.is_owner(request.state.teacher):  # only the owner creates admins
+        return _redirect("/admin/teachers", t("teachers.owner_only"))
+    if name and not _teacher_name_taken(db, name):
         db.add(Teacher(name=name, role=role))
         db.commit()
     return _redirect("/admin/teachers")
+
+
+@router.post("/teachers/{tid}/rename")
+def rename_teacher(tid: int, request: Request, name: str = Form(...), db: Session = Depends(get_db)):
+    """The name is what the teacher types to sign in; past records keep pointing at the same account."""
+    te = db.get(Teacher, tid)
+    name = " ".join(name.split())[:80]
+    if not te or not name:
+        return _redirect("/admin/teachers")
+    denied = _deny_account(request.state.teacher, te)
+    if denied:
+        return denied
+    if _teacher_name_taken(db, name, except_id=tid):
+        return _redirect("/admin/teachers", t("teachers.name_taken"))
+    te.name = name
+    db.commit()
+    return _redirect("/admin/teachers", t("teachers.renamed").format(name=name))
 
 
 @router.post("/teachers/{tid}/role")
@@ -1310,29 +1742,78 @@ def toggle_teacher_role(tid: int, request: Request, db: Session = Depends(get_db
     me = request.state.teacher
     if not te:
         return _redirect("/admin/teachers")
-    if me and te.id == me.id:
-        return _redirect("/admin/teachers", t("teachers.cant_self"))
+    # who is an admin is decided by the owner account only
+    denied = _deny_account(me, te, owner_only=True)
+    if denied:
+        return denied
+    if te.id == me.id or te.is_owner:
+        return _redirect("/admin/teachers", t("teachers.owner_protected"))
     te.role = "teacher" if te.role == "admin" else "admin"
     db.commit()
-    return _redirect("/admin/teachers")
+    return _redirect("/admin/teachers", t("teachers.role_set").format(name=te.name, role=t("role." + te.role)))
 
 
 @router.post("/teachers/{tid}/password")
-def set_teacher_password(tid: int, password: str = Form(...), db: Session = Depends(get_db)):
+def set_teacher_password(tid: int, request: Request, password: str = Form(...), db: Session = Depends(get_db)):
     from ..auth import hash_password
 
     teacher = db.get(Teacher, tid)
+    if teacher:
+        denied = _deny_account(request.state.teacher, teacher)
+        if denied:
+            return denied
     if teacher and password.strip():
         teacher.password_hash = hash_password(password.strip())
         db.commit()
     return _redirect("/admin/teachers", t("teachers.pw_set"))
 
 
+@router.post("/teachers/{tid}/delete")
+def delete_teacher(tid: int, request: Request, db: Session = Depends(get_db)):
+    """Delete an account. Children's results stay; their "recorded by" becomes blank
+    (change history keeps the name), and groups the teacher led become unassigned."""
+    from ..models import (AudioNote, BankActivity, BankQuestion, EmailLog, Event, Group, ItemRecord,
+                          MailAccount, ReportPdf, Review, SessionArchive, SourcePdf, StageObs, Summary)
+
+    te = db.get(Teacher, tid)
+    me = request.state.teacher
+    if not te:
+        return _redirect("/admin/teachers")
+    if me and te.id == me.id:
+        return _redirect("/admin/teachers", t("teachers.cannot_delete_self"))
+    denied = _deny_account(me, te)
+    if denied:
+        return denied
+    if te.is_owner:
+        return _redirect("/admin/teachers", t("teachers.owner_protected"))
+    if te.role == "admin" and db.query(Teacher).filter(Teacher.role == "admin", Teacher.id != tid).count() == 0:
+        return _redirect("/admin/teachers", t("teachers.cannot_delete_last_admin"))
+    refs = [
+        (Group, Group.teacher_id), (ItemRecord, ItemRecord.teacher_id), (Event, Event.teacher_id),
+        (StageObs, StageObs.teacher_id), (Summary, Summary.teacher_id), (Review, Review.teacher_id),
+        (ReportPdf, ReportPdf.teacher_id), (SessionArchive, SessionArchive.teacher_id),
+        (AudioNote, AudioNote.teacher_id), (EmailLog, EmailLog.teacher_id), (MailAccount, MailAccount.connected_by),
+        (BankQuestion, BankQuestion.created_by), (BankActivity, BankActivity.created_by), (SourcePdf, SourcePdf.uploaded_by),
+    ]
+    kept = 0
+    for model, col in refs:
+        kept += db.query(model).filter(col == tid).update({col: None}, synchronize_session=False)
+    name = te.name
+    db.delete(te)
+    db.commit()
+    return _redirect("/admin/teachers", t("teachers.deleted").format(name=name, n=kept))
+
+
 @router.post("/teachers/{tid}/toggle")
-def toggle_teacher(tid: int, db: Session = Depends(get_db)):
-    t = db.get(Teacher, tid)
-    if t:
-        t.active = not t.active
+def toggle_teacher(tid: int, request: Request, db: Session = Depends(get_db)):
+    te = db.get(Teacher, tid)
+    if te:
+        denied = _deny_account(request.state.teacher, te)
+        if denied:
+            return denied
+        if te.is_owner:
+            return _redirect("/admin/teachers", t("teachers.owner_protected"))
+        te.active = not te.active
         db.commit()
     return _redirect("/admin/teachers")
 
@@ -1547,9 +2028,25 @@ def mailbox_test(to: str = Form(...), db: Session = Depends(get_db)):
 # (own URL prefix: /admin/bank/{bid} already takes every /admin/bank/<x> path)
 
 def _team_stages():
-    from ..routers.workbench import OBS_STAGES
+    """Every team part name in use (the four built-in ones first), for bank stems."""
+    from ..db import SessionLocal
+    from ..stage_defs import DEFAULT_STAGES
 
-    return OBS_STAGES
+    out = [k for k, _ in DEFAULT_STAGES]
+    db = SessionLocal()
+    try:
+        for (k,) in db.query(PaperStage.key).distinct().order_by(PaperStage.key):
+            if k not in out:
+                out.append(k)
+    finally:
+        db.close()
+    return out
+
+
+def _paper_stage_keys(db, pid):
+    from ..stage_defs import paper_stages
+
+    return [x["key"] for x in paper_stages(db, pid)]
 
 
 @router.get("/teambank")
@@ -1667,13 +2164,9 @@ def stage_cite(pid: int, activity_id: int = Form(...), db: Session = Depends(get
     a = db.get(BankActivity, activity_id)
     if not db.get(Paper, pid) or not a:
         return _redirect("/admin/papers")
-    m = db.query(StageMaterial).filter_by(paper_id=pid, stage=a.stage).first()
-    if m is None:
-        m = StageMaterial(paper_id=pid, stage=a.stage)
-        db.add(m)
-    m.title, m.text, m.activity_id = a.title, a.prompt, a.id
-    db.query(QuestionMedia).filter_by(paper_id=pid, stage=a.stage).delete()
-    qbank.copy_media(db, a.media, paper_id=pid, stage=a.stage)
+    if a.stage not in _paper_stage_keys(db, pid):
+        return _redirect(f"/admin/papers/{pid}", t("build.err_no_part"))
+    qbank.set_stage_stem(db, pid, a)
     db.commit()
     return _redirect(f"/admin/papers/{pid}", t("papers.stage_cited").format(stage=t("stage." + a.stage), title=a.title))
 
@@ -1731,7 +2224,7 @@ def _pdf_target(db, target):
         if kind == "stage":
             pid, _, stage = rest.partition(":")
             p = db.get(Paper, int(pid))
-            if p and stage in _team_stages():
+            if p and stage in _paper_stage_keys(db, p.id):
                 return ({"paper_id": p.id, "stage": stage}, f"/admin/papers/{p.id}", f"{p.name} · {t('stage.' + stage)}")
     except ValueError:
         return None
@@ -1749,7 +2242,7 @@ def _pdf_new_links(db, new):
             p = db.get(Paper, int(pid))
         except ValueError:
             p = None
-        if p and lv in qbank.LEVELS and dom in qbank.DOMAINS:
+        if p and lv in qbank.paper_levels(db, p.id) and dom in qbank.DOMAINS:
             return [(t("pdf.new_in_paper").format(paper=p.name, lv=lv, dom=t("domain." + dom)),
                      per_type(f"/admin/papers/{p.id}/new?version={lv}&domain={quote(dom)}"))]
     # from the bank (either tab) every category is offered: pick it per question
@@ -1899,3 +2392,64 @@ def pdf_attach(pdf_id: int, page: int = Form(...), rect: str = Form(...), target
         f"/admin/pdfs/{pdf_id}?page={page}&target={quote(target)}&msg={quote(t('pdf.attached').format(label=tgt[2]))}",
         status_code=303,
     )
+
+
+# ---------- change history ----------
+
+HIST_KINDS = ["score", "stage", "event", "review", "comment", "roster", "bulk"]
+HIST_LIMIT = 1000
+
+
+def _history_rows(db, sid, actor, student, kind):
+    from .. import audit
+
+    return audit.query(db, session_id=sid, student_id=student or None, kind=kind if kind in HIST_KINDS else None,
+                       actor_id=actor or None, limit=HIST_LIMIT)
+
+
+@router.get("/sessions/{sid}/history")
+def session_history(sid: int, request: Request, actor: int = 0, student: int = 0, kind: str = "",
+                    db: Session = Depends(get_db)):
+    from .. import audit
+    from ..models import ChangeLog
+
+    s = db.get(AssessSession, sid)
+    if not s:
+        return _redirect("/admin/sessions")
+    actors = (
+        db.query(ChangeLog.actor_id, ChangeLog.actor_name).filter(ChangeLog.session_id == sid, ChangeLog.actor_id.isnot(None))
+        .distinct().order_by(ChangeLog.actor_name).all()
+    )
+    entries = audit.describe(db, _history_rows(db, sid, actor, student, kind))
+    return templates.TemplateResponse(
+        request,
+        "admin_history.html",
+        {
+            "s": s, "entries": entries, "limit": HIST_LIMIT,
+            "actors": [(a, n) for a, n in actors], "kinds": HIST_KINDS,
+            "students": db.query(Student).filter_by(session_id=sid).order_by(Student.name).all(),
+            "f": {"actor": actor, "student": student, "kind": kind}, "active": "admin",
+        },
+    )
+
+
+@router.get("/sessions/{sid}/history.csv")
+def session_history_csv(sid: int, actor: int = 0, student: int = 0, kind: str = "", db: Session = Depends(get_db)):
+    import csv
+    import io
+
+    from .. import audit
+
+    s = db.get(AssessSession, sid)
+    if not s:
+        return _redirect("/admin/sessions")
+    buf = io.StringIO()
+    w = csv.writer(buf)
+    w.writerow(["Time", "Who", "Child", "Item", "Field", "Before", "After"])
+    for e in audit.describe(db, _history_rows(db, sid, actor, student, kind)):
+        for label, _o, _n, full_old, full_new in e["lines"] or [("", "", "", "", "")]:
+            w.writerow([e["at"].strftime("%Y-%m-%d %H:%M:%S"), e["who"], e["child"], e["what"], label, full_old, full_new])
+    name = f"{s.date}_{s.label.replace(' ', '_')}_history.csv"
+    safe = "".join(c for c in name if c.isascii() and (c.isalnum() or c in "._-")) or "history.csv"
+    return Response(content=("﻿" + buf.getvalue()).encode("utf-8"), media_type="text/csv",
+                    headers={"Content-Disposition": f'attachment; filename="{safe}"'})

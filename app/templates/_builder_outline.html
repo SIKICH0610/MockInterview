@@ -1,0 +1,146 @@
+{# Right side of the builder: the interview as drop zones. Team interview first. #}
+{% from "_macros.html" import media_editor %}
+{% set back = '/admin/papers/' ~ p.id ~ '/build' %}
+<div class="bd-group">
+  <div class="bd-group-head"><span class="sec-num">1</span> {{ t('build.team') }} <span class="muted small">{{ t('build.team_hint') }}</span></div>
+  <div class="bd-parts">
+    {% for part in parts %}
+    {% set st = part.key %}
+    {% set mat = materials.get(st) %}
+    {% set filled = mat and (mat.title or mat.text) %}
+    {% set pics = stage_media.get(st, []) %}
+    <div class="bd-part" id="part-{{ part.id }}">
+      <div class="bd-part-head">
+        <span class="bd-part-n">{{ loop.index }}</span>
+        <span class="bd-part-name">{{ t('stage.' ~ st) }}</span>
+        <span class="bank-tag">{{ t('parts.kind.' ~ part.kind) }}</span>
+        <span class="bd-part-tools">
+          <form method="post" action="/admin/papers/{{ p.id }}/parts/{{ part.id }}/move">
+            <input type="hidden" name="step" value="-1"><input type="hidden" name="back" value="{{ back }}">
+            <button class="bd-tool" type="submit" title="{{ t('parts.up') }}" aria-label="{{ t('parts.up') }}" {{ 'disabled' if loop.first }}>↑</button>
+          </form>
+          <form method="post" action="/admin/papers/{{ p.id }}/parts/{{ part.id }}/move">
+            <input type="hidden" name="step" value="1"><input type="hidden" name="back" value="{{ back }}">
+            <button class="bd-tool" type="submit" title="{{ t('parts.down') }}" aria-label="{{ t('parts.down') }}" {{ 'disabled' if loop.last }}>↓</button>
+          </form>
+          <button class="bd-tool" type="button" data-part-rename="{{ part.id }}" title="{{ t('parts.rename') }}" aria-label="{{ t('parts.rename') }}">✎</button>
+          <form method="post" action="/admin/papers/{{ p.id }}/parts/{{ part.id }}/delete"
+                onsubmit="return confirm({{ t('parts.delete_confirm') | tojson | forceescape }})">
+            <input type="hidden" name="back" value="{{ back }}">
+            <button class="bd-tool bd-tool-del" type="submit" title="{{ t('parts.delete') }}" aria-label="{{ t('parts.delete') }}">×</button>
+          </form>
+        </span>
+      </div>
+      <form method="post" action="/admin/papers/{{ p.id }}/parts/{{ part.id }}/rename" class="bd-part-rename" data-rename-form="{{ part.id }}" hidden>
+        <input type="hidden" name="back" value="{{ back }}">
+        <input type="text" name="label" value="{{ part.label or st }}" maxlength="80" required aria-label="{{ t('parts.name') }}">
+        <input type="text" name="label_zh" value="{{ part.label_zh or (t('stage.' ~ st) if cur_lang() == 'zh' else '') }}" maxlength="80" placeholder="{{ t('parts.name_zh') }}" aria-label="{{ t('parts.name_zh') }}">
+        <button class="btn btn-sm" type="submit">{{ t('btn.save') }}</button>
+      </form>
+
+      <div class="bd-zone bd-stage {{ 'filled' if filled }}" data-kind="stage" data-stage="{{ st }}">
+        {% if filled or pics %}
+        <div class="bd-item bd-stem" data-activity-id="{{ mat.activity_id or '' if mat else '' }}">
+          <div class="bd-item-main">
+            <b>{{ (mat.title if mat else '') or t('stage.' ~ st) }}</b>
+            {% if pics %}<span class="bank-media-n">▣ {{ pics | length }}</span>{% endif %}
+            {% if mat and mat.text %}<div class="muted small">{{ mat.text | truncate(120) }}</div>{% endif %}
+          </div>
+          <button type="button" class="bd-x" data-clear-stage="{{ st }}" title="{{ t('btn.remove') }}" aria-label="{{ t('btn.remove') }}">×</button>
+        </div>
+        {% else %}
+        <div class="bd-empty">{{ t('build.drop_stem') }}</div>
+        {% endif %}
+      </div>
+
+      <details class="bd-part-edit" data-part-edit="{{ part.id }}">
+        <summary>{{ t('parts.write_stem') }}</summary>
+        <form method="post" action="/admin/papers/{{ p.id }}/stage_material" enctype="multipart/form-data" class="q-form">
+          <input type="hidden" name="stage" value="{{ st }}"><input type="hidden" name="back" value="{{ back }}">
+          <label class="q-full">{{ t('papers.stem_title') }}
+            <input type="text" name="title" value="{{ mat.title if mat else '' }}" maxlength="160"></label>
+          <label class="q-full">{{ t('papers.material') }}
+            <textarea name="text" rows="3" placeholder="{{ t('papers.material_ph') }}">{{ mat.text if mat else '' }}</textarea></label>
+          <label class="q-full">{{ t('papers.material_files') }}
+            <input type="file" name="files" multiple accept=".pdf,image/png,image/jpeg,image/gif,image/webp"></label>
+          <div class="dimedit-bar">
+            <a class="btn btn-ghost btn-sm" href="/admin/pdfs?target={{ ('stage:' ~ p.id ~ ':' ~ st) | urlencode }}">{{ t('pdf.cut_from_pdf') }}</a>
+            <button class="btn btn-sm" type="submit">{{ t('btn.save') }}</button>
+          </div>
+        </form>
+        {{ media_editor(pics, back) }}
+      </details>
+
+      <div class="bd-part-eval small">
+        <span class="muted">{{ t('parts.eval') }}</span>
+        {% if part.kind == 'separation' %}{{ t('sep.cell.independent') }} / {{ t('sep.cell.brief') }} / {{ t('sep.cell.support') }}
+        {% else %}
+          {% if part.kind == 'prompts' %}{% set np = prompts_by.get(st, []) | length %}<span class="{{ '' if np else 'mail-warn' }}">{{ t('parts.n_prompts').format(n=np) if np else t('parts.no_prompts') }}</span> · {% endif %}
+          {% for dm in dims.get(st, []) %}{{ (dm.label_zh or dm.label) if cur_lang() == 'zh' else dm.label }}{% if not loop.last %} · {% endif %}{% endfor %}
+          <a href="/admin/papers/{{ p.id }}#part-{{ part.id }}">{{ t('parts.edit_eval') }}</a>
+        {% endif %}
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+
+  <form method="post" action="/admin/papers/{{ p.id }}/parts/add" class="bd-part-add">
+    <input type="hidden" name="back" value="{{ back }}">
+    <label>{{ t('parts.name') }}<input type="text" name="label" maxlength="80" required placeholder="{{ t('parts.name_ph') }}"></label>
+    <label>{{ t('parts.name_zh') }}<input type="text" name="label_zh" maxlength="80" placeholder="{{ t('parts.name_zh_ph') }}"></label>
+    <label>{{ t('parts.kind') }}
+      <select name="kind">{% for k in stage_kinds %}<option value="{{ k }}">{{ t('parts.kind.' ~ k) }}</option>{% endfor %}</select></label>
+    <button class="btn btn-sm" type="submit">＋ {{ t('parts.add') }}</button>
+  </form>
+</div>
+
+<div class="bd-group">
+  <div class="bd-group-head"><span class="sec-num">2</span> {{ t('build.individual') }}
+    <span class="muted small">{{ t('build.individual_hint') }}</span></div>
+  <div class="bd-levels">
+    {% for lv, doms in sections.items() %}
+    {% set nq = doms.values() | map('length') | sum %}
+    <div class="bd-level">
+      <div class="bd-level-head"><span class="lv-badge lv-{{ lv }}">{{ lv }}</span> {{ nq }} {{ t('papers.count') | lower }}
+        {% if levels | length > 1 and not level_scored.get(lv) %}
+        <form method="post" action="/admin/papers/{{ p.id }}/levels/remove" class="bd-level-x"
+              onsubmit="return confirm({{ t('grades.remove_confirm').format(level=lv, n=nq) | tojson | forceescape }})">
+          <input type="hidden" name="level" value="{{ lv }}"><input type="hidden" name="back" value="{{ back }}">
+          <button class="bd-tool bd-tool-del" type="submit" title="{{ t('grades.remove').format(level=lv) }}" aria-label="{{ t('grades.remove').format(level=lv) }}">×</button>
+        </form>
+        {% endif %}
+      </div>
+      {% for dom, qs in doms.items() %}
+      <div class="bd-zone bd-qzone {{ 'locked' if locked }}" data-kind="q" data-version="{{ lv }}" data-domain="{{ dom }}">
+        <div class="bd-zone-head">{{ t('domain.' ~ dom) }} <span class="muted small">{{ qs | length }}</span></div>
+        <div class="bd-list">
+          {% for q in qs %}
+          <div class="bd-item" draggable="{{ 'false' if locked else 'true' }}" data-qid="{{ q.id }}" data-bank-id="{{ q.bank_id or '' }}">
+            <span class="bd-grip" aria-hidden="true">⋮⋮</span>
+            <div class="bd-item-main">
+              <b class="qcode">{{ q.code }}</b> {{ q.title }}
+              {% if q.media %}<span class="bank-media-n">▣ {{ q.media | length }}</span>{% endif %}
+              <div class="muted small">{{ q.ability }} · {% if q.qtype == 'count' %}{{ t('qtype.count_n').format(n=q.trial_max) }}{% else %}{{ t('qtype.' ~ (q.qtype or 'single')) }}{% endif %}</div>
+            </div>
+            <a class="bd-edit" href="/admin/questions/{{ q.id }}/edit" title="{{ t('q.edit') }}" aria-label="{{ t('q.edit') }}">✎</a>
+            {% if not locked %}<button type="button" class="bd-x" data-remove-q="{{ q.id }}" title="{{ t('btn.remove') }}" aria-label="{{ t('btn.remove') }}">×</button>{% endif %}
+          </div>
+          {% endfor %}
+        </div>
+        {% if not qs %}<div class="bd-empty">{{ t('build.drop_q') }}</div>{% endif %}
+      </div>
+      {% endfor %}
+    </div>
+    {% endfor %}
+  </div>
+  <form method="post" action="/admin/papers/{{ p.id }}/levels/add" class="bd-part-add bd-level-add">
+    <input type="hidden" name="back" value="{{ back }}">
+    <label>{{ t('grades.name') }}
+      <input type="text" name="level" maxlength="8" required placeholder="{{ t('grades.name_ph') }}" list="bd-grade-list" autocomplete="off">
+      <datalist id="bd-grade-list">{% for x in more_levels %}<option value="{{ x }}">{% endfor %}</datalist></label>
+    <label>{{ t('grades.copy_from') }}
+      <select name="copy_from"><option value="">{{ t('grades.copy_none') }}</option>{% for lv in levels %}<option value="{{ lv }}">{{ t('grades.copy_of').format(level=lv) }}</option>{% endfor %}</select></label>
+    <div class="bd-grade-quick">{% for x in more_levels %}<button type="submit" class="btn btn-ghost btn-sm" name="level" value="{{ x }}" formnovalidate>＋ {{ x }}</button>{% endfor %}</div>
+    <button class="btn btn-sm" type="submit">＋ {{ t('grades.add') }}</button>
+  </form>
+</div>

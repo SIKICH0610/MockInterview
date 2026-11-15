@@ -75,6 +75,7 @@
         <b>{{ b.title }}</b>
         {% if media_n.get(b.id) %}<span class="bank-media-n" title="{{ t('bank.media_head') }}">▣ {{ media_n[b.id] }}</span>{% endif %}
         <div class="muted small">{{ b.prompt | truncate(110) }}</div>
+        {% if b.key_ability %}<div class="small pb-key">{{ b.key_ability | truncate(110) }}{% if b.practice or b.home_game %} <span class="bank-tag">{{ t('sheet.has_practice') }}</span>{% endif %}</div>{% endif %}
         {% if b.tags %}<div class="bank-tags">{% for tg in b.tags.split(',') if tg.strip() %}<span class="bank-tag">{{ tg.strip() }}</span>{% endfor %}</div>{% endif %}
       </td>
       <td class="small">{{ t('domain.' ~ b.domain) }} · {{ b.ability }}</td>
