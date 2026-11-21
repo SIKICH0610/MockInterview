@@ -9,7 +9,7 @@
     <div class="dim-opts">
       {% for en, zh in d.options %}
       <button type="button" class="dim-opt {{ 'do-good' if loop.first else ('do-low' if loop.last else 'do-mid') }} {{ 'on' if vals.get((st.id, d.key)) == en }}"
-              data-dim="{{ d.key }}" data-val="{{ en }}">{{ zh if cur_lang() == 'zh' and zh else en }}</button>
+              data-dim="{{ d.key }}" data-val="{{ en }}">{{ zh if cur_lang() == 'zh' and zh else en }} <span class="opt-score">({{ 2 if loop.first else (0 if loop.last else 1) }})</span></button>
       {% endfor %}
     </div>
   </div>
@@ -17,7 +17,7 @@
 </div>
 {% endmacro %}
 {% block title %}{{ t('stage.obs.title') }} · {{ s.label }}{% endblock %}
-{% block bodyattrs %}data-teacher="{{ teacher.id }}" data-page="stage" data-stage="{{ stage }}" data-stage-kind="{{ stage_kind }}" data-live-session="{{ s.id }}"{% endblock %}
+{% block bodyattrs %}data-teacher="{{ teacher.id }}" data-page="stage" data-stage="{{ stage }}" data-stage-kind="{{ stage_kind }}" data-group="{{ group.id if group else '' }}" data-live-session="{{ s.id }}"{% endblock %}
 {% block content %}
 <div class="wb-head">
   <div>
@@ -34,9 +34,11 @@
     <span class="chip-count">{{ g.students | length }}</span>
   </a>
 {% endmacro %}
+{# data-struct: what must match for the page to stay as it is; when the groups change, the page reloads (app.js) #}
+<div hidden data-struct="{{ group.id if group else '' }}:{{ group.teacher_id if group else '' }}"></div>
 {% if groups %}
 {# your own group(s) first; other teachers' groups are folded into one tab so nobody scores the wrong group by accident #}
-<div class="chip-row">
+<div class="chip-row" data-live-key="groups">
   {% for g in my_groups %}{{ gchip(g) }}{% endfor %}
   {% if other_groups %}
   {% if viewing_other %}{{ gchip(group) }}{% endif %}
@@ -57,7 +59,9 @@
 {% endif %}
 {% endif %}
 
-<div class="qchip-row">
+<div class="qchip-row stage-tabs">
+  {% if guide %}<button type="button" class="btn btn-ghost btn-sm guide-toggle" id="guide-toggle" aria-controls="guide" aria-expanded="true"
+          data-show="{{ t('guide.show') }}" data-hide="{{ t('guide.hide') }}">{{ t('guide.hide') }}</button>{% endif %}
   {% for os in obs_stages %}
   <a class="qchip stage-chip {{ 'on' if os == stage }}"
      href="/wb/stage?session_id={{ s.id }}{% if group %}&group_id={{ group.id }}{% endif %}&stage={{ os | urlencode }}">
@@ -77,6 +81,7 @@
 </div>
 {% endif %}
 
+{% if guide %}<div class="stage-layout" id="stage-layout"><div class="stage-main">{% endif %}
 {% if not students %}
 <div class="card"><p class="muted">
   {% if teacher.role == 'admin' %}
@@ -93,7 +98,7 @@
   {% for st in students %}
   {% set rows = obs_by_student.get(st.id, []) %}
   {% set o = rows[0] if rows else None %}
-  <div class="obs-card single-card sep-card" id="st-{{ st.id }}" data-live-key="c{{ st.id }}" data-student="{{ st.id }}" data-stage="{{ stage }}">
+  <div class="obs-card single-card sep-card" id="st-{{ st.id }}" data-live-key="c{{ st.id }}" data-pid="{{ st.id }}" data-pname="{{ st.name }}" data-student="{{ st.id }}" data-stage="{{ stage }}">
     <div class="qcard-head">
       <span class="stname">{{ st.name }}</span>
       <span class="lv-badge lv-{{ st.level }}">{{ st.level }}</span>
@@ -101,9 +106,9 @@
       <button type="button" class="hist-btn" data-student="{{ st.id }}" data-kind="stage" data-ref-prefix="{{ stage }}" title="{{ t('hist.btn') }}" aria-label="{{ t('hist.btn') }}"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v4h4"/><path d="M12 7v5l3 2"/></svg></button>
     </div>
     <div class="sep-pills">
-      <button type="button" class="sep-pill sp-good {{ 'on' if o and o.response == 'independent' }}" data-resp="independent">{{ t('sep.independent') }}</button>
-      <button type="button" class="sep-pill sp-mid {{ 'on' if o and o.response == 'brief' }}" data-resp="brief">{{ t('sep.brief') }}</button>
-      <button type="button" class="sep-pill sp-low {{ 'on' if o and o.response == 'support' }}" data-resp="support">{{ t('sep.support') }}</button>
+      <button type="button" class="sep-pill sp-good {{ 'on' if o and o.response == 'independent' }}" data-resp="independent">{{ t('sep.independent') }} <span class="opt-score">(2)</span></button>
+      <button type="button" class="sep-pill sp-mid {{ 'on' if o and o.response == 'brief' }}" data-resp="brief">{{ t('sep.brief') }} <span class="opt-score">(1)</span></button>
+      <button type="button" class="sep-pill sp-low {{ 'on' if o and o.response == 'support' }}" data-resp="support">{{ t('sep.support') }} <span class="opt-score">(0)</span></button>
     </div>
     <textarea class="sep-note" placeholder="{{ t('sep.note.placeholder') }}">{{ o.note if o else '' }}</textarea>
     <div class="qcard-foot">
@@ -113,10 +118,12 @@
   {% endfor %}
 </div>
 
-{% elif stage_kind == 'prompts' %}
-<p class="stage-hint">{{ t('circle.hint') }} {{ t('dims.hint') }}</p>
+{% else %}
+{% if stage_kind == 'prompts' %}
+{# Story Time: the questions are the teacher's script (the stem). Each child gets ONE set of ratings for the whole part. #}
+<p class="stage-hint">{{ t('circle.hint') }}</p>
 <div class="prompt-panel card">
-  <div class="rubric-head">{{ t('circle.prompts') }}</div>
+  <div class="rubric-head">{{ t('circle.prompts') }} <span class="prompt-note">{{ t('circle.prompts_note') }}</span></div>
   <div class="prompt-row">
     {% for p in prompts %}
     <button type="button" class="prompt-chip {{ 'on' if loop.first }}" data-idx="{{ loop.index }}">P{{ loop.index }}</button>
@@ -126,49 +133,14 @@
   <div class="prompt-text {{ 'show' if loop.first }}" data-idx="{{ loop.index }}">{{ p }}</div>
   {% endfor %}
 </div>
-
-<div class="card-grid wide">
-  {% for st in students %}
-  <div class="obs-card" id="st-{{ st.id }}" data-live-key="c{{ st.id }}" data-student="{{ st.id }}" data-stage="{{ stage }}">
-    <div class="qcard-head">
-      <span class="stname">{{ st.name }}</span>
-      <span class="lv-badge lv-{{ st.level }}">{{ st.level }}</span>
-      <span class="save-ind"></span>
-      <button type="button" class="hist-btn" data-student="{{ st.id }}" data-kind="stage" data-ref-prefix="{{ stage }}" title="{{ t('hist.btn') }}" aria-label="{{ t('hist.btn') }}"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v4h4"/><path d="M12 7v5l3 2"/></svg></button>
-    </div>
-    <input type="text" class="obs-note" placeholder="{{ t('obs.note.placeholder') }}">
-    <div class="resp-row">
-      <button type="button" class="resp-btn rb-good" data-resp="independent" data-label="{{ t('resp.independent') }}">{{ t('resp.independent') }}</button>
-      <button type="button" class="resp-btn rb-mid" data-resp="prompted" data-label="{{ t('resp.prompted') }}">{{ t('resp.prompted') }}</button>
-      <button type="button" class="resp-btn rb-low" data-resp="none" data-label="{{ t('resp.none') }}">{{ t('resp.none') }}</button>
-    </div>
-    <div class="dim-divider">{{ t('dims.head') }}</div>
-    {{ dimblock(st, stage_dims, dimvals) }}
-    <div class="obs-log-head">{{ t('circle.log') }}</div>
-    <div class="obs-log">
-      {% for o in obs_by_student.get(st.id, []) | selectattr('prompt_index') | sort(attribute='prompt_index') %}
-      {% if o.prompt_index %}
-      <div class="obs-item" data-id="{{ o.id }}" data-prompt="{{ o.prompt_index or '' }}" data-resp="{{ o.response }}">
-        <span class="obs-p">P{{ o.prompt_index }}</span>
-        <span class="obs-resp r-{{ o.response }}">{{ t('resp.' ~ o.response) }}</span>
-        {% if o.note %}<span class="obs-note-txt">{{ o.note }}</span>{% endif %}
-        <span class="by">{{ teacher_names.get(o.teacher_id, '') }} · {{ o.created_at.strftime('%H:%M') }}</span>
-        <button type="button" class="obs-del" title="Delete">&times;</button>
-      </div>
-      {% endif %}
-      {% endfor %}
-    </div>
-  </div>
-  {% endfor %}
-</div>
-
 {% else %}
 <p class="stage-hint">{{ t('dims.general_hint') }}</p>
+{% endif %}
 <div class="card-grid wide">
   {% for st in students %}
-  {% set rows = obs_by_student.get(st.id, []) %}
+  {% set rows = obs_by_student.get(st.id, []) | rejectattr('prompt_index') | list %}{# older per-question answers are not this part's note #}
   {% set o = rows[0] if rows else None %}
-  <div class="obs-card dim-card" id="st-{{ st.id }}" data-live-key="c{{ st.id }}" data-student="{{ st.id }}" data-stage="{{ stage }}">
+  <div class="obs-card dim-card" id="st-{{ st.id }}" data-live-key="c{{ st.id }}" data-pid="{{ st.id }}" data-pname="{{ st.name }}" data-student="{{ st.id }}" data-stage="{{ stage }}">
     <div class="qcard-head">
       <span class="stname">{{ st.name }}</span>
       <span class="lv-badge lv-{{ st.level }}">{{ st.level }}</span>
@@ -176,7 +148,7 @@
       <button type="button" class="hist-btn" data-student="{{ st.id }}" data-kind="stage" data-ref-prefix="{{ stage }}" title="{{ t('hist.btn') }}" aria-label="{{ t('hist.btn') }}"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v4h4"/><path d="M12 7v5l3 2"/></svg></button>
     </div>
     {{ dimblock(st, stage_dims, dimvals) }}
-    <textarea class="sep-note" placeholder="{{ t('obs.note.placeholder') }}">{{ o.note if o else '' }}</textarea>
+    <textarea class="sep-note" placeholder="{{ t('obs.note.follow') if stage_kind == 'prompts' else t('obs.note.placeholder') }}">{{ o.note if o else '' }}</textarea>
     <div class="qcard-foot">
       {% if o and o.teacher_id %}<span class="by">{{ t('macro.by') }} {{ teacher_names.get(o.teacher_id, '') }}</span>{% endif %}
     </div>
@@ -184,5 +156,41 @@
   {% endfor %}
 </div>
 {% endif %}
+{% endif %}
+{% if guide %}
+</div>
+<aside class="guide" id="guide" aria-label="{{ t('guide.title') }}">
+  <div class="guide-head">{{ t('guide.title') }} <span class="muted small">· {{ t('stage.' ~ stage) }}</span></div>
+  {% for g in guide.rows %}
+  <div class="guide-row">
+    <div class="guide-name">{{ g.title }}{% if g.tag %} <span class="guide-tag">{{ g.tag }}</span>{% endif %}</div>
+    {% if g.observe %}<div class="guide-observe">{{ g.observe }}</div>{% endif %}
+    {% if g.levels %}
+    <table class="guide-levels">
+      {% for sc, txt in g.levels %}<tr><td><span class="guide-score gs-{{ sc }}">{{ sc }}</span></td><td>{{ txt }}</td></tr>{% endfor %}
+    </table>
+    {% endif %}
+    {% for note, sc in g.examples %}
+    <div class="guide-ex"><span class="guide-score gs-{{ sc[0] }}">{{ sc }}</span><span class="guide-ex-note"><b>{{ t('guide.example') }}</b> {{ note }}</span></div>
+    {% endfor %}
+  </div>
+  {% endfor %}
+</aside>
+</div>
+<script>
+(function () {
+  const lay = document.getElementById("stage-layout"), btn = document.getElementById("guide-toggle");
+  if (!lay || !btn) return;
+  let hidden = false;
+  try { hidden = localStorage.getItem("guideHidden") === "1"; } catch (e) { /* private mode */ }
+  function apply() {
+    lay.classList.toggle("guide-hidden", hidden);
+    btn.textContent = hidden ? btn.dataset.show : btn.dataset.hide;
+    btn.setAttribute("aria-expanded", String(!hidden));
+  }
+  btn.addEventListener("click", () => { hidden = !hidden; try { localStorage.setItem("guideHidden", hidden ? "1" : "0"); } catch (e) { /* ignore */ } apply(); });
+  apply();
+})();
+</script>
 {% endif %}
 {% endblock %}

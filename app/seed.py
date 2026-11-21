@@ -20,9 +20,9 @@ EXPR = {
     "e0": "No relevant oral response",
 }
 # M01 Creativity ticket rubric (no expression score by design)
-M01_R = {
-    "r2": "Extra decoration beyond the required number-writing",
-    "r1": "Prescribed number-writing / drawing only",
+M01_R = {  # creativity only: following the three steps is rated in Cutting & Drawing
+    "r2": "Added decoration or details of their own beyond the three steps",
+    "r1": "The three steps only, nothing added",
     "r0": "No drawing or writing",
 }
 
@@ -54,10 +54,13 @@ STAGES = [
 _HANDCRAFT_DIMS = [
     ("follow", "Follow Instruction", ["Always", "Need Reminder", "Cannot Follow"]),
     ("motor", "Fine Motor Skills", ["Good", "Fair", "Needs Support"]),
-    ("sharing", "Sharing Tool", ["Good", "Fair", "Cannot Share"]),
-    ("problem", "Problem Solving", ["Good", "Fair", "Cannot Solve"]),
+    # two SEL ratings around shared materials. Relationship skills (DRDP SED 4): how the child shares with peers -
+    # 2 = shares on their own, 1 = sits and waits, 0 = grabs. Problem solving (DRDP ATL 3): what the child does when
+    # there is not enough to go round - 2 = works out a way on their own, 1 = the ordinary case (uses a tool and puts it back)
+    ("sharing", "Interaction with Peers · SEL", ["Shares on Own", "Waits", "Grabs"]),
+    ("problem", "Problem Solving · SEL", ["Solves It on Own", "Uses & Returns", "Cannot Solve"]),
     ("creativity", "Creativity", ["Design Sth New", "Similar to Example", "Same as Example"]),
-    ("attitude", "General Attitude", ["Good", "Fair", "Passive"]),
+    ("attitude", "Persistence & Recovery", ["Good", "Fair", "Passive"]),
 ]
 
 _SELF_INTRO_DIMS = [  # legacy sheet: Self Introduction block
@@ -70,6 +73,7 @@ _SELF_INTRO_DIMS = [  # legacy sheet: Self Introduction block
 STAGE_DIMS = {
     "Self Introduction": _SELF_INTRO_DIMS,
     "Story Time": [
+        ("follow", "Follows Instructions", ["Follows", "Needs Assistance", "Cannot Follow"]),  # one rating for the whole story
         ("participation", "Participation", ["Active", "Moderately Engaged", "Disengaged"]),
         ("focus", "Focus", ["Good", "Fair", "Cannot Focus"]),
         ("listen", "Listen to Others", ["Always", "Need Reminder", "Cannot Listen"]),
@@ -104,10 +108,10 @@ def _q(version, code, sort, domain, ability, title, prompt, target, setup, r, e=
 QUESTIONS = [
     # ---------------- TK ----------------
     _q("TK", "M01", 1, "Mathematics", "Creativity",
-       "Make Pip's picnic ticket",
-       "Write 1 in the circle, 2 in the triangle and 3 in the square.",
-       "Completed during the group activity after the story; the child brings the ticket to the station.",
-       "The station teacher observes the existing work and records M01 once. Do not ask the child to remake or explain it. Digit accuracy is noted but is not a separate academic score.",
+       "Pack Pip's picnic basket",
+       "Look at the child's finished picnic basket. Did they add anything of their own?",
+       "Made during Cutting & Drawing; the child brings the basket to the station.",
+       "Score creativity only. Following the three steps (cut, count, color) was already rated in Cutting & Drawing, so do not score it again here. Do not ask the child to remake or explain the work.",
        M01_R),
     _q("TK", "M02", 2, "Mathematics", "Number Sense",
        "Share the cakes",
@@ -194,10 +198,10 @@ QUESTIONS = [
 
     # ---------------- K ----------------
     _q("K", "M01", 1, "Mathematics", "Creativity",
-       "Make Pip's picnic ticket",
-       "Write 1 in the circle, 2 in the triangle and 3 in the square.",
-       "Completed during the group activity after the story; the child brings the ticket to the station.",
-       "The station teacher observes the existing work and records M01 once. Do not ask the child to remake or explain it. Digit accuracy is noted but is not a separate academic score.",
+       "Pack Pip's picnic basket",
+       "Look at the child's finished picnic basket. Did they add anything of their own?",
+       "Made during Cutting & Drawing; the child brings the basket to the station.",
+       "Score creativity only. Following the three steps (cut, count, color) was already rated in Cutting & Drawing, so do not score it again here. Do not ask the child to remake or explain the work.",
        M01_R),
     _q("K", "M02", 2, "Mathematics", "Number Sense",
        "Which color has more?",

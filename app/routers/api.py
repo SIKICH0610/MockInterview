@@ -33,6 +33,17 @@ def _can_touch(me, st):
 
 FORBIDDEN = {"ok": False, "error": "not your group"}
 
+# A distraction counts under Classroom Skills. Points taken off per distraction:
+# 1 when the child followed after a reminder, 2 when they did not.
+DISTRACTION_AREA = "CS"
+DISTRACTION_POINTS = {"yes": 1, "no": 2}
+
+
+def dragq_task(q):
+    from .. import dragq
+
+    return dragq.parse(q)
+
 
 def _lock_student(db, student_id):
     """One save at a time per child. On PostgreSQL the second writer waits until the first has
@@ -136,9 +147,12 @@ def _serialize_record(rec, db):
         "academic": rec.academic,
         "expression": rec.expression,
         "trial": rec.trial,
+        "indep": rec.indep,
         "note": rec.note or "",
         "rev": rec.rev,
         "by": tname,
+        "drag": rec.drag or "",
+        "in_chinese": bool(rec.in_chinese),
     }
 
 
@@ -201,19 +215,87 @@ def upsert_record(request: Request, payload: dict = Body(...), db: Session = Dep
         rec = ItemRecord(student_id=student_id, code=code, rev=0)
         db.add(rec)
 
+    had_trial, had_academic = rec.trial, rec.academic
+    keep_scored = False
     rec.academic = _coerce_int(payload.get("academic"))
     rec.expression = _coerce_int(payload.get("expression"))
     rec.trial = _coerce_int(payload.get("trial"))
+    if "indep" in payload:  # counting tasks: done independently or not (older open pages do not send it)
+        v = _coerce_int(payload.get("indep"))
+        rec.indep = v if v in (0, 1, 2) else None
+    # count questions: the score comes from the number right, nothing else (no "after a cue" level)
+    from .. import bank as qbank
+    from ..models import Question
+
+    s = student.session
+    q = db.query(Question).filter_by(paper_id=s.paper_id or qbank.default_paper_id(db), version=student.level, code=code).first()
+    if q is not None and q.trial_max and not dragq_task(q):
+        if rec.trial is None and had_trial is None and had_academic is not None:
+            rec.academic = had_academic  # an older record with a score but no count: keep its score until a count is entered
+            keep_scored = True
+        else:
+            rec.academic = qbank.count_score(q.trial_max, rec.trial)
     status = payload.get("status") or None
     if status not in (None, "scored", "not_observed", "not_completed"):
         status = None
-    rec.status = status
+    rec.status = "scored" if keep_scored and status is None else status
     rec.note = str(payload.get("note") or "")
+    if "in_chinese" in payload:  # older open pages do not send it: leave it as it is
+        rec.in_chinese = bool(payload.get("in_chinese"))
     rec.teacher_id = teacher_id
     rec.rev += 1
     rec.updated_at = datetime.now()
     db.commit()
-    return {"ok": True, "rev": rec.rev, "by": tname}
+    return {"ok": True, "rev": rec.rev, "by": tname, "academic": rec.academic}
+
+
+@router.post("/drag/check")
+def drag_check(request: Request, payload: dict = Body(...), db: Session = Depends(get_db)):
+    """The teacher tapped Check on a drag-on-tablet task: work out the score from where the child
+    put the pieces, and record it as the task score (the teacher can still change it on the card)."""
+    import json
+
+    from .. import bank as qbank
+    from .. import dragq
+    from ..models import Question
+
+    student = db.get(Student, int(payload["student_id"]))
+    code = str(payload["code"])
+    if not student:
+        return JSONResponse(status_code=404, content={"ok": False, "error": "student not found"})
+    me = _me(request)
+    if not _can_touch(me, student):
+        return JSONResponse(status_code=403, content=FORBIDDEN)
+    s = student.session
+    q = (db.query(Question).filter_by(paper_id=s.paper_id or qbank.default_paper_id(db), version=student.level, code=code).first())
+    cfg = dragq.parse(q) if q else None
+    if not cfg:
+        return JSONResponse(status_code=400, content={"ok": False, "error": "no drag task"})
+    placement = payload.get("placement") if isinstance(payload.get("placement"), dict) else {}
+    res = dragq.score(cfg, placement)
+    _lock_student(db, student.id)
+    rec = db.query(ItemRecord).filter_by(student_id=student.id, code=code).first()
+    if rec is None:
+        rec = ItemRecord(student_id=student.id, code=code, rev=0)
+        db.add(rec)
+    rec.academic, rec.status = res["score"], "scored"
+    if q.trial_max and res["total"] == q.trial_max:
+        rec.trial = res["right"]  # a "x of N" question whose N is the number of pieces: the count comes with it
+    slot_ids, piece_ids = {x["id"] for x in cfg["slots"]}, {x["id"] for x in cfg["pieces"]}
+    keep = {}
+    for pid, v in placement.items():  # only ids of this task are stored
+        if pid in piece_ids and isinstance(v, dict) and v.get("slot") in slot_ids:
+            try:
+                keep[pid] = {"slot": v["slot"], "rot": int(v.get("rot") or 0) % 360}
+            except (TypeError, ValueError):
+                keep[pid] = {"slot": v["slot"], "rot": 0}
+    rec.drag = json.dumps({"placement": keep, "score": res["score"], "right": res["right"], "total": res["total"],
+                           "placed": res["placed"], "at": datetime.now().strftime("%Y-%m-%d %H:%M")}, separators=(",", ":"))
+    rec.teacher_id = me.id if me else rec.teacher_id
+    rec.rev = (rec.rev or 0) + 1
+    rec.updated_at = datetime.now()
+    db.commit()
+    return {"ok": True, "result": res, "current": _serialize_record(rec, db)}
 
 
 @router.post("/event/add")
@@ -225,16 +307,28 @@ def add_event(request: Request, payload: dict = Body(...), db: Session = Depends
     if not _can_touch(_me(request), student):
         return JSONResponse(status_code=403, content=FORBIDDEN)
     _lock_student(db, student_id)
-    ev = Event(
-        student_id=student_id,
-        category=str(payload.get("category") or "SEL"),
-        stage=str(payload.get("stage") or ""),
-        code=(payload.get("code") or None),
-        points=_coerce_int(payload.get("points")) or 1,
-        reason=str(payload.get("reason") or ""),
-        support=str(payload.get("support") or ""),
-        teacher_id=(_me(request).id if _me(request) else _coerce_int(payload.get("teacher_id"))),
-    )
+    followed = str(payload.get("followed") or "")
+    if followed in ("yes", "no"):
+        # Distraction record: the teacher only says how many times, in which session, and whether the
+        # child followed after a reminder. Area and points are worked out here (see DISTRACTION_POINTS).
+        count = max(1, min(20, _coerce_int(payload.get("count")) or 1))
+        ev = Event(
+            student_id=student_id, category=DISTRACTION_AREA, stage=str(payload.get("stage") or ""),
+            count=count, followed=followed, points=count * DISTRACTION_POINTS[followed],
+            reason=str(payload.get("reason") or "").strip(), support="",
+            teacher_id=(_me(request).id if _me(request) else _coerce_int(payload.get("teacher_id"))),
+        )
+    else:  # older free-form event
+        ev = Event(
+            student_id=student_id,
+            category=str(payload.get("category") or "SEL"),
+            stage=str(payload.get("stage") or ""),
+            code=(payload.get("code") or None),
+            points=_coerce_int(payload.get("points")) or 1,
+            reason=str(payload.get("reason") or ""),
+            support=str(payload.get("support") or ""),
+            teacher_id=(_me(request).id if _me(request) else _coerce_int(payload.get("teacher_id"))),
+        )
     db.add(ev)
     db.commit()
     tname = ""
@@ -247,11 +341,57 @@ def add_event(request: Request, payload: dict = Body(...), db: Session = Depends
         "category": ev.category,
         "stage": ev.stage,
         "points": ev.points,
+        "count": ev.count or 1,
+        "followed": ev.followed or "",
         "reason": ev.reason,
         "support": ev.support,
         "by": tname,
         "time": ev.created_at.strftime("%H:%M"),
     }
+
+
+@router.post("/event/set")
+def set_distraction(request: Request, payload: dict = Body(...), db: Session = Depends(get_db)):
+    """The distraction counters of one child in one session part. Every distraction is either
+    "came back after the reminder" (1 point) or "did not come back" (2 points), so a part has two
+    counters. The page shows what is recorded and the teacher corrects it in place; a counter at 0
+    has no record. Older separate records of the same kind are folded into one."""
+    student_id = int(payload["student_id"])
+    student = db.get(Student, student_id)
+    if not student:
+        return JSONResponse(status_code=404, content={"ok": False, "error": "student not found"})
+    me = _me(request)
+    if not _can_touch(me, student):
+        return JSONResponse(status_code=403, content=FORBIDDEN)
+    _lock_student(db, student_id)
+    stage = str(payload.get("stage") or "")
+    reason = str(payload.get("reason") or "").strip()
+    items = []
+    for followed in ("yes", "no"):
+        count = max(0, min(99, _coerce_int(payload.get(followed)) or 0))
+        rows = (db.query(Event).filter(Event.student_id == student_id, Event.stage == stage, Event.followed == followed)
+                .order_by(Event.created_at.desc(), Event.id.desc()).all())
+        if count == 0:
+            for r in rows:
+                db.delete(r)
+            continue
+        ev = rows[0] if rows else Event(student_id=student_id, category=DISTRACTION_AREA, stage=stage, support="", followed=followed)
+        if not rows:
+            db.add(ev)
+        for r in rows[1:]:
+            db.delete(r)
+        if (ev.count, ev.reason or "") != (count, reason):
+            ev.teacher_id = me.id if me else ev.teacher_id  # only the counter that was changed gets a new "recorded by"
+        ev.count, ev.points, ev.reason = count, count * DISTRACTION_POINTS[followed], reason
+        db.flush()
+        tname = ""
+        if ev.teacher_id:
+            t = db.get(Teacher, ev.teacher_id)
+            tname = t.name if t else ""
+        items.append({"id": ev.id, "stage": ev.stage, "count": ev.count, "followed": followed, "points": ev.points,
+                      "reason": ev.reason, "by": tname, "time": (ev.created_at or datetime.now()).strftime("%H:%M")})
+    db.commit()
+    return {"ok": True, "items": items}
 
 
 @router.post("/event/delete")

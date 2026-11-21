@@ -13,6 +13,8 @@ import html as html_mod
 import math
 from datetime import date
 
+from .. import bank as qbank
+from .. import devstage
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import RedirectResponse
 from sqlalchemy.orm import Session
@@ -40,6 +42,7 @@ from ..report_i18n import (
     ability_name,
     dim_label,
     dim_value,
+    LEGACY_DIM_VALUE,
     rl,
     stage_name,
     SEP_LABEL_EN,
@@ -52,6 +55,43 @@ from ..stage_defs import paper_dims, paper_prompts
 from ..templating import templates
 
 router = APIRouter()
+
+
+CHALLENGE_CLASS = {"K": "PreK Challenge", "TK": "K3 Challenge"}  # the child's level -> the Think Academy class
+
+
+def _score_means(q, R, rlang):
+    """[(2, text), (1, text), (0, text)] - what each task score means for this question, for the report's
+    "what the score means" column: the question's own captions where it has them, else by its type."""
+    caps = qbank.score_caps(q)
+    if q.trial_max and q.qtype != "drag":
+        base = [R["means_count"].format(span=s) for s in qbank.count_spans(q.trial_max)]
+    elif q.qtype == "drag":
+        base = R["means_drag"]
+    else:
+        base = R["means_std"]
+    return [(v, (caps[v][1 if rlang == "zh" else 0] if v in caps else base[i])) for i, v in enumerate((2, 1, 0))]
+
+
+def _public_base(request):
+    """The site's address as parents reach it (for links printed on the report). The PDF renderer opens the
+    report on 127.0.0.1, so it hands the address over in ?pub=."""
+    import os
+    import re
+
+    env = os.environ.get("MI_PUBLIC_URL", "").rstrip("/")
+    if env:
+        return env
+    pub = request.query_params.get("pub", "")
+    if request.query_params.get("for") == "pdf" and re.fullmatch(r"https?://[A-Za-z0-9.\-]+(:\d+)?", pub):
+        return pub
+    h = request.headers
+    origin = h.get("origin") or ""  # sent by the browser with the "make PDF" request: the address exactly as the teacher sees it
+    if re.fullmatch(r"https?://[A-Za-z0-9.\-]+(:\d+)?", origin):
+        return origin
+    proto = (h.get("x-forwarded-proto") or request.url.scheme).split(",")[0].strip()
+    host = (h.get("x-forwarded-host") or h.get("host") or request.url.netloc).split(",")[0].strip()
+    return f"{proto}://{host}"
 
 ABILITY_ORDER = [
     "Number Sense",
@@ -322,7 +362,7 @@ def collect_report_facts(db, st):
             lines.append(f"{stage} ratings — " + "; ".join(vals) + ".")
 
     for o in obs:
-        if o.stage in general_stages and o.prompt_index is None and not o.dim and o.note:
+        if (o.stage in general_stages or o.stage == story_stage) and o.prompt_index is None and not o.dim and o.note:
             lines.append(f"{o.stage} note: {o.note}")
 
     for q in qs:
@@ -331,6 +371,14 @@ def collect_report_facts(db, st):
             how = {2: "independent correct", 1: "correct after guidance", 0: "not yet established"}.get(
                 r.academic, str(r.academic)
             )
+            if q.trial_max:  # a counted task: the score is only the number of items right; no hints are given
+                how = f"scored {r.academic} of 2 from the number of items answered correctly"
+                ih = {2: "on their own", 1: "after the teacher's guidance", 0: "not yet, even with guidance"}.get(r.indep)
+                if ih and q.qtype != "drag":
+                    how += f"; how independently (a separate rating): {ih}"
+            elif q.qtype == "drag":  # a drag-on-tablet task: scored by where the child put the pieces
+                how = {2: "placed every piece correctly on the tablet", 1: "placed some pieces correctly on the tablet",
+                       0: "did not place a piece correctly on the tablet"}.get(r.academic, str(r.academic))
             line = f"Task {q.code} ({q.title}, {q.ability}): {how}."
             if q.has_expression and r.expression is not None:
                 eh = {2: "spoke in a complete sentence", 1: "answered with a word or short phrase",
@@ -339,6 +387,8 @@ def collect_report_facts(db, st):
                     line += f" Oral expression: {eh}."
             if q.trial_max and r.trial is not None:
                 line += f" Item-level correct: {r.trial} of {q.trial_max}."
+            if r.in_chinese:
+                line += " The child answered this task in Chinese, not in English."
             if r.note:
                 line += f" Teacher note: {r.note}"
             lines.append(line)
@@ -349,12 +399,33 @@ def collect_report_facts(db, st):
 
     for ev in events:
         kind = "SEL" if ev.category == "SEL" else "Classroom"
+        if ev.followed:  # distraction record: only what was recorded, no interpretation
+            n = ev.count or 1
+            line = (f"Distraction during {ev.stage}: distracted {n} time{'s' if n != 1 else ''}; "
+                    + ("followed after a reminder." if ev.followed == "yes" else "did not follow after a reminder."))
+            if ev.reason:
+                line += f" Teacher's note: {ev.reason}."
+            lines.append(line)
+            continue
         line = f"{kind} support event during {ev.stage}: {ev.reason}."
         if ev.support:
             line += f" Support given: {ev.support}."
         lines.append(line)
 
     return "\n".join(lines)
+
+
+@router.get("/stages")
+def stages_page(request: Request):
+    """What the developmental stages on the report mean - a public page, linked from the report for parents."""
+    lang = request.query_params.get("lang") or request.cookies.get("lang", "en")
+    lang = lang if lang in ("en", "zh") else "en"
+    zh = lang == "zh"
+    return templates.TemplateResponse(request, "stages.html", {
+        "zh": zh, "lang": lang, "source_url": devstage.SOURCE_URL,
+        "bands": [(b[2] if zh else b[1], b[4] if zh else b[3]) for b in devstage.BANDS],
+        "measures": [m[2] if zh else m[1] for m in devstage.MEASURES.values()],
+    })
 
 
 @router.get("/report/{stid}")
@@ -406,7 +477,7 @@ def report_page(stid: int, request: Request, db: Session = Depends(get_db)):
             math_total += r.academic
             if r.academic == 2:
                 indep += 1
-            elif r.academic == 1:
+            elif r.academic == 1 and q.qtype != "drag":  # a drag task scored 1 is "partly right", not "with guidance"
                 guided += 1
         elif not r or not r.status:
             math_missing.append(q.code)
@@ -451,6 +522,8 @@ def report_page(stid: int, request: Request, db: Session = Depends(get_db)):
         [o for o in obs if o.stage == story_stage and o.prompt_index and not o.dim],
         key=lambda o: (o.prompt_index or 0),
     )
+    # the story part's one note per child (its questions are not answered one by one any more)
+    story_note = next((o.note for o in obs if o.stage == story_stage and o.prompt_index is None and not o.dim and o.note), "")
     gen = {}
     for stage in general_stages:
         row = next(
@@ -480,8 +553,10 @@ def report_page(stid: int, request: Request, db: Session = Depends(get_db)):
             else:
                 loc = dim_label("en", d["label"])
                 disp_val = dim_value("en", raw)
-            vals.append((loc, disp_val))
             en_opts = [en for en, _ in d["options"]]
+            if raw not in en_opts and (d["key"], raw) in LEGACY_DIM_VALUE:  # recorded under the dimension's earlier levels
+                disp_val = LEGACY_DIM_VALUE[(d["key"], raw)][1 if rlang == "zh" else 0]
+            vals.append((loc, disp_val))
             if raw in en_opts:
                 idx = en_opts.index(raw)
                 if idx == 0 and loc not in dim_strength_labels:
@@ -505,6 +580,7 @@ def report_page(stid: int, request: Request, db: Session = Depends(get_db)):
     if cmp_mode == "paper":
         sess_ids = [x.id for x in db.query(AssessSession).filter_by(paper_id=paper_id).all()]
         cmp_label = R["cmp_paper"]
+        rank_cap = R["rank_paper"]
         cmp_desc = R["cmp_desc_paper"]
     elif cmp_mode == "range" and cmp_from and cmp_to:
         sess_ids = [
@@ -520,11 +596,13 @@ def report_page(stid: int, request: Request, db: Session = Depends(get_db)):
         if s.id not in sess_ids:
             sess_ids.append(s.id)
         cmp_label = R["cmp_range"].format(f=cmp_from, t=cmp_to)
+        rank_cap = R["rank_range"].format(f=cmp_from, t=cmp_to)
         cmp_desc = R["cmp_desc_range"].format(f=cmp_from, t=cmp_to)
     else:
         cmp_mode = "session"
         sess_ids = [s.id]
         cmp_label = R["cmp_session"]
+        rank_cap = R["rank_session"]
         cmp_desc = R["cmp_desc_session"]
 
     cohort, _mcodes, _ecodes = _cohort_rows(db, sess_ids, st.level, paper_id)
@@ -610,11 +688,18 @@ def report_page(stid: int, request: Request, db: Session = Depends(get_db)):
             _chal_m.append(f"“{q.title}”" if rlang == "zh" else q.title)
         elif r and r.status == "not_observed":
             _noobs_m.append(f"“{q.title}”" if rlang == "zh" else q.title)
-    _ind_e, _gui_e, _chal_e = [], [], []
+    _ind_e, _gui_e, _chal_e, _part_e, _help_e = [], [], [], [], []
     for q, r in eng_rows:
         title = f"“{q.title}”" if rlang == "zh" else q.title
-        if _scored(r) and r.academic == 2:
+        counted = bool(q.trial_max) and q.qtype != "drag"  # a counting task: `indep` says whether the child needed help
+        if counted and _scored(r) and r.academic == 1 and r.indep == 1:  # partly right, and with help
+            _help_e.append(title)
+        if counted and _scored(r) and r.academic == 2 and r.indep == 1:
+            _gui_e.append(title)  # every item right, with the teacher's guidance
+        elif _scored(r) and r.academic == 2:
             _ind_e.append(title)
+        elif _scored(r) and r.academic == 1 and q.trial_max:  # a counted task: 1 = partly right, not "after guidance"
+            _part_e.append(f"{title} ({r.trial}/{q.trial_max})" if r.trial is not None else title)
         elif _scored(r) and r.academic == 1:
             _gui_e.append(title)
         elif (_scored(r) and r.academic == 0) or (r and r.status == "not_completed"):
@@ -633,6 +718,8 @@ def report_page(stid: int, request: Request, db: Session = Depends(get_db)):
         eng_max=eng_max,
         eng_indep=_ind_e,
         eng_guided=_gui_e,
+        eng_partial=_part_e,
+        eng_helped=_help_e,
         eng_challenges=_chal_e,
         expr_sum=expr_sum,
         expr_max=expr_max,
@@ -712,6 +799,7 @@ def report_page(stid: int, request: Request, db: Session = Depends(get_db)):
             "sep": sep,
             "sep_label": sep_map.get(sep.response) if sep else None,
             "circle": circle,
+            "story_note": story_note,
             "prompts": paper_prompts(db, paper_id, story_stage) if story_stage else [],
             "sep_stage": sep_stage,
             "story_stage": story_stage,
@@ -721,6 +809,10 @@ def report_page(stid: int, request: Request, db: Session = Depends(get_db)):
             "stage_dim_values": stage_dim_values,
             "resp_label": resp_map,
             "R": R,
+            "talk_rows": [(q, r, qbank.talk_for(q, r, zh=rlang == "zh")) for q, r in math_rows + eng_rows
+                          if r is not None and r.status == "scored" and r.academic is not None and r.academic < 2],
+            "dev_rows": devstage.build(math_rows + eng_rows, zh=rlang == "zh", level=st.level),
+            "stages_url": devstage.SOURCE_URL,  # the official source; our own plain-language page stays at /stages
             "rlang": rlang,
             "ability_names": ABILITY_ZH if rlang == "zh" else {},
             "lang_urls": lang_urls,
@@ -734,6 +826,12 @@ def report_page(stid: int, request: Request, db: Session = Depends(get_db)):
             "cohort_n": cohort_n,
             "cmp_mode": cmp_mode,
             "cmp_label": cmp_label,
+            "rank_cap": rank_cap,
+            # full marks in mathematics with classroom skills (focus) at 45 or more of 50:
+            # recommend the challenge class of the child's level. No row on the cover otherwise.
+            "challenge_class": (CHALLENGE_CLASS.get(st.level, "") if math_max and not math_missing and math_total == math_max
+                                and cs_score >= 45 else ""),
+            "score_means": {q.code: _score_means(q, R, rlang) for q, _ in math_rows + eng_rows},
             "cmp_desc": cmp_desc,
             "cmp_from": cmp_from,
             "cmp_to": cmp_to,
@@ -775,7 +873,9 @@ def generate_pdf(stid: int, request: Request, db: Session = Depends(get_db)):
         rlang = "en"
     port = request.url.port or 8008
     base = os.environ.get("MI_SELF_URL", f"http://127.0.0.1:{port}")
-    url = f"{base}/report/{st.id}?rlang={rlang}&for=pdf"
+    from urllib.parse import quote
+
+    url = f"{base}/report/{st.id}?rlang={rlang}&for=pdf&pub={quote(_public_base(request), safe='')}"
 
     try:
         from playwright.sync_api import sync_playwright
@@ -907,6 +1007,9 @@ def batch_archive(sid: int, request: Request, db: Session = Depends(get_db)):
     port = request.url.port or 8008
     base = os.environ.get("MI_SELF_URL", f"http://127.0.0.1:{port}")
 
+    from urllib.parse import quote
+
+    _pub = quote(_public_base(request), safe="")
     pdf_count = 0
     try:
         from playwright.sync_api import sync_playwright
@@ -919,7 +1022,7 @@ def batch_archive(sid: int, request: Request, db: Session = Depends(get_db)):
             for st in targets:
                 for rlang in ("en", "zh"):
                     page.goto(
-                        f"{base}/report/{st.id}?rlang={rlang}&for=pdf",
+                        f"{base}/report/{st.id}?rlang={rlang}&for=pdf&pub={_pub}",
                         wait_until="networkidle",
                         timeout=30000,
                     )

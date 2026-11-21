@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% block title %}{{ t('gb.title') }} · {{ s.label }}{% endblock %}
-{% block bodyattrs %}data-page="grouping" data-session="{{ s.id }}"{% endblock %}
+{% block bodyattrs %}data-teacher="{{ request.state.teacher.id }}" data-page="grouping" data-session="{{ s.id }}" data-live-session="{{ s.id }}"{% endblock %}
 {% block content %}
 <div class="page-head">
   <div>
@@ -25,6 +25,8 @@
   </span>
   <a class="btn gb-start {{ 'disabled' if not (students and groups and pool | length == 0) }}" href="/wb/stage?session_id={{ s.id }}">{{ t('gb.start_scoring') }}</a>
 </div>
+
+<div id="gb-presence" class="gb-presence" hidden><span class="gb-pres-dot"></span><span class="gb-presence-text"></span></div>
 
 <p class="stage-hint">{{ t('gb.tap_hint') }}</p>
 
@@ -57,6 +59,7 @@
       <option value="{{ te.id }}" {{ 'selected' if g.teacher_id == te.id }}>{{ te.name }}</option>
       {% endfor %}
     </select>
+    <div class="gb-pres"></div>
     <div class="gb-list">
       {% for st in g.students | sort(attribute='name') %}
       <div class="gb-chip" data-student="{{ st.id }}">

@@ -148,14 +148,23 @@
     <span class="lv-badge lv-{{ st.level }}">{{ st.level }}</span>
     <span class="save-ind"></span>
   </div>
-  {% else %}
-  <div class="qcard-head slim">
-    <span class="save-ind"></span>
-    <button type="button" class="hist-btn" data-student="{{ st.id }}" data-kind="score" data-ref="{{ q.code }}" title="{{ t('hist.btn') }}" aria-label="{{ t('hist.btn') }}"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v4h4"/><path d="M12 7v5l3 2"/></svg></button>
+  {% endif %}
+  {% set caps = score_caps(q) %}
+  <div class="conflict-bar"></div>
+  {% set dcfg = drag_cfg(q) %}
+  {% if dcfg %}
+  {# drag-on-tablet task: the child does it full screen, Check fills in the task score below #}
+  <div class="drag-row" data-title="{{ q.prompt or q.title }}">
+    <button type="button" class="btn drag-start"><span aria-hidden="true">&#9654;</span> <span class="drag-start-txt">{{ t('drag.start') }}</span></button>
+    <span class="drag-result"></span>
+    <button type="button" class="btn btn-ghost btn-sm drag-view" hidden>{{ t('drag.view') }}</button>
+    <script type="application/json" class="drag-cfg">{{ dcfg | tojson }}</script>
+    <script type="application/json" class="drag-rec">{{ drag_rec(r) | tojson }}</script>
   </div>
   {% endif %}
-  <div class="conflict-bar"></div>
 
+  {% set counted = q.trial_max and not dcfg %}{# count question: only the number right is recorded; the score follows from it #}
+  {% if not counted %}
   <div class="ctrl-row">
     <span class="ctrl-label">{{ t('macro.task') }}</span>
     <div class="btn-group">
@@ -163,11 +172,12 @@
       <button type="button" class="sbtn {{ ['sb-low', 'sb-mid', 'sb-good'][v] }} {{ 'on' if r and r.academic == v and r.status != 'not_observed' and r.status != 'not_completed' }}"
               data-kind="a" data-val="{{ v }}">
         <span class="sbtn-num">{{ v }}</span>
-        <span class="sbtn-sub">{{ t('sbtn.a' ~ v) }}</span>
+        <span class="sbtn-sub">{% if caps.get(v) %}{{ caps[v][1] if cur_lang() == 'zh' else caps[v][0] }}{% else %}{{ t('sbtn.a' ~ v) }}{% endif %}</span>
       </button>
       {% endfor %}
     </div>
   </div>
+  {% endif %}
 
   {% if q.has_expression %}
   <div class="ctrl-row">
@@ -185,15 +195,36 @@
   {% endif %}
 
   {% if q.trial_max %}
+  {% set cuts = count_cuts(q.trial_max) %}
   <div class="ctrl-row">
     <span class="ctrl-label">{{ t('macro.correct') }}</span>
     <div class="stepper">
       <button type="button" class="tminus">&minus;</button>
       <span class="trial-val" data-val="{{ r.trial if r and r.trial is not none else '' }}"
-            data-max="{{ q.trial_max }}">{{ r.trial if r and r.trial is not none else '–' }}</span>
+            data-max="{{ q.trial_max }}"{% if counted %} data-hi="{{ cuts[0] }}" data-mid="{{ cuts[1] }}"{% endif %}>{{ r.trial if r and r.trial is not none else '–' }}</span>
       <button type="button" class="tplus">+</button>
       <span class="trial-max">/ {{ q.trial_max }}</span>
+      {% if counted %}
+      <span class="count-score" data-score="{{ r.academic if r and r.academic is not none and r.status == 'scored' else '' }}" data-label="{{ t('count.score') }}">{% if r and r.academic is not none and r.status == 'scored' %}{{ t('count.score') }} {{ r.academic }}{% endif %}</span>
+      <span class="trial-hint">{% set sp = count_spans(q.trial_max) %}{{ t('count.rule').format(a=sp[0], b=sp[1], c=sp[2]) }}</span>
+      {% else %}
       <span class="trial-hint">{{ t('trial.hint') }}</span>
+      {% endif %}
+    </div>
+  </div>
+  {% endif %}
+
+  {% if counted %}{# the second score of a counting task: done independently or not (shown on the report, not in the total) #}
+  <div class="ctrl-row">
+    <span class="ctrl-label">{{ t('macro.indep') }}</span>
+    <div class="btn-group">
+      {% for v in [2, 1, 0] %}
+      <button type="button" class="sbtn sbtn-i {{ ['sb-low', 'sb-mid', 'sb-good'][v] }} {{ 'on' if r and r.indep == v and r.status != 'not_observed' and r.status != 'not_completed' }}"
+              data-kind="i" data-val="{{ v }}">
+        <span class="sbtn-num">{{ v }}</span>
+        <span class="sbtn-sub">{{ t('sbtn.a' ~ v) }}</span>
+      </button>
+      {% endfor %}
     </div>
   </div>
   {% endif %}
@@ -202,7 +233,12 @@
     <textarea class="note-ta" placeholder="{{ t('note.placeholder') }}">{{ r.note if r else '' }}</textarea>
   </div>
   <div class="qcard-foot">
+    <button type="button" class="zh-btn {{ 'on' if r and r.in_chinese }}" title="{{ t('zh.tip') }}" aria-pressed="{{ 'true' if r and r.in_chinese else 'false' }}"><span class="zh-ico" aria-hidden="true">中</span>{{ t('zh.btn') }}</button>
     {% if r and r.teacher_id %}<span class="by">{{ t('macro.by') }} {{ teacher_names.get(r.teacher_id, '') }}</span>{% endif %}
+    {% if not show_name %}
+    <span class="save-ind"></span>
+    <button type="button" class="hist-btn" data-student="{{ st.id }}" data-kind="score" data-ref="{{ q.code }}" title="{{ t('hist.btn') }}" aria-label="{{ t('hist.btn') }}"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v4h4"/><path d="M12 7v5l3 2"/></svg></button>
+    {% endif %}
   </div>
 </div>
 {% endmacro %}

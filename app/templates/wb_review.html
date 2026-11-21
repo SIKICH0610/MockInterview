@@ -13,6 +13,18 @@
 
 <p class="stage-hint">{{ t('review.hint') }}</p>
 
+{% if view_counts %}
+{# an admin who also teaches a group: their own children by default, everyone on request #}
+<div class="chip-row rv-switch">
+  <a class="chip {{ 'on' if view == 'mine' }}" href="/wb/review?session_id={{ s.id }}">
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg>
+    {{ t('review.mine') }} <span class="chip-count">{{ view_counts[0] }}</span></a>
+  <a class="chip {{ 'on' if view != 'mine' }}" href="/wb/review?session_id={{ s.id }}&view=all">
+    <svg width="17" height="15" viewBox="0 0 28 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="10" cy="8" r="4"/><path d="M2 21a8 8 0 0 1 16 0"/><circle cx="20" cy="9" r="3"/><path d="M21 14.5a6.5 6.5 0 0 1 5 6.5"/></svg>
+    {{ t('review.everyone') }} <span class="chip-count">{{ view_counts[1] }}</span></a>
+</div>
+{% endif %}
+
 {% if teacher.role == 'admin' %}
 <div class="archive-bar">
   <button type="button" class="btn" id="batch-archive" data-session="{{ s.id }}"
@@ -44,7 +56,7 @@
 {%- endmacro %}
 
 {% for gname, members in roster %}
-<div class="card mx-card">
+<div class="card mx-card" data-struct="{{ gname or '' }}:{% for st in members %}{{ st.id }},{% endfor %}">
   <div class="card-head"><span class="sec-num">{{ gname if gname else t('roster.ungrouped') }}</span></div>
   <div class="mx-scroll">
     <table class="mx-table">
@@ -52,17 +64,22 @@
         <th class="mx-name">{{ t('label.name') }}</th>
         {% for code in codes %}<th>{{ code }}</th>{% endfor %}
         {% for part in parts %}<th class="mx-stage-h">{{ t('stage.' ~ part.key) }}</th>{% endfor %}
-        <th>{{ t('review.events') }}</th>
+        <th class="mx-stage-h">{{ t('review.events') }}</th>
         <th>{{ t('review.progress') }}</th>
-        <th>{{ t('review.status') }}</th>
-        <th></th>
+        <th class="mx-action"></th>
       </tr>
       {% for st in members %}
       {% set rv = reviews.get(st.id) %}
-      <tr class="mx-row" data-student="{{ st.id }}" data-live-key="r{{ st.id }}">
+      <tr class="mx-row" data-student="{{ st.id }}" data-live-key="r{{ st.id }}" data-pid="{{ st.id }}" data-pname="{{ st.name }}">
         <td class="mx-name">
           <a href="/wb/student/{{ st.id }}">{{ st.name }}</a>
           <span class="lv-badge lv-{{ st.level }}">{{ st.level }}</span>
+          <div class="mx-status">
+            <span class="status-chip stc-{{ status[st.id] }}">{{ t('st.' ~ status[st.id]) }}</span>
+            {% if changed_after.get(st.id) %}{% set ca = changed_after[st.id] %}
+            <a class="hist-flag" href="/wb/student/{{ st.id }}#history" title="{{ t('hist.flag_tip').format(n=ca[0], when=ca[1].strftime('%m-%d %H:%M')) }}">{{ t('hist.flag') }}</a>
+            {% endif %}
+          </div>
         </td>
         {% for code in codes %}
         {% set r = records.get((st.id, code)) %}
@@ -78,6 +95,7 @@
             {% elif r and r.status == 'not_observed' %}<span class="mx-no">N/O</span>
             {% elif r and r.status == 'not_completed' %}<span class="mx-no">N/C</span>
             {% else %}<span class="mx-blank">&mdash;</span>{% endif %}
+            {%- if r and r.in_chinese %}<span class="mx-zh" title="{{ t('review.zh_tip') }}">中</span>{% endif %}
           </a>
         </td>
         {% endfor %}
@@ -91,17 +109,13 @@
         {% endfor %}
         <td class="mx-cell mx-num"><a href="/wb/student/{{ st.id }}#events-card">{{ ev_counts.get(st.id, 0) or '·' }}</a></td>
         <td class="mx-cell mx-num"><b>{{ progress[st.id] }}</b>/{{ total }}</td>
-        <td class="mx-cell">
-          <span class="status-chip stc-{{ status[st.id] }}">{{ t('st.' ~ status[st.id]) }}</span>
-          {% if changed_after.get(st.id) %}{% set ca = changed_after[st.id] %}
-          <a class="hist-flag" href="/wb/student/{{ st.id }}#history" title="{{ t('hist.flag_tip').format(n=ca[0], when=ca[1].strftime('%m-%d %H:%M')) }}">{{ t('hist.flag') }}</a>
-          {% endif %}
-        </td>
         <td class="mx-cell mx-action">
           <button type="button" class="btn btn-sm review-btn {{ 'btn-ghost' if rv else '' }}">
             {{ t('btn.unconfirm') if rv else t('btn.confirm_review') }}
           </button>
-          <a class="btn btn-ghost btn-sm" href="/report/{{ st.id }}">{{ t('btn.report') }}</a>
+          <a class="btn btn-sm rv-report" href="/report/{{ st.id }}" title="{{ t('review.report_tip') }}">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/><path d="M9 13h6M9 17h4"/></svg>
+            {{ t('btn.report') }}</a>
           <div class="review-meta by">
             {% if rv %}{{ teacher_names.get(rv.teacher_id, '') }} · {{ rv.created_at.strftime('%m-%d %H:%M') }}{% endif %}
           </div>

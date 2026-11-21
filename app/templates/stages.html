@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="{{ 'zh' if zh else 'en' }}">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex">
+<title>{{ '学习基础参考说明' if zh else 'About the learning foundations reference' }} · Think Academy</title>
+<link rel="stylesheet" href="{{ asset_url('style.css') }}">
+</head>
+<body>
+<main class="stg">
+  <a class="stg-lang" href="/stages?lang={{ 'en' if zh else 'zh' }}">{{ 'English' if zh else '中文' }}</a>
+  <div><img class="brand-logo brand-logo-md" src="{{ asset_url('logo.png') }}" alt="Think Academy Silicon Valley" width="1200" height="113"></div>
+
+  {% if zh %}
+  <h1>报告里的「学习基础参考」是什么意思？</h1>
+  <p class="stg-lead">这一页解释模拟面试报告中「学习基础参考」那一部分：年级水平从哪里来，每一格代表什么，以及应该怎么看。</p>
+
+  <h2>年级水平从哪里来</h2>
+  <p>报告使用加州教育部发布的《学前／过渡幼儿园学习基础》（Preschool/Transitional Kindergarten Learning Foundations，简称 <b>PTKLF</b>）。它描述孩子在两个年龄段通常知道什么、能做什么：</p>
+  <div class="stg-ladder stg-ladder-3">{% for name, age in bands %}<span>{{ name }}<small>{{ age }}</small></span>{% endfor %}</div>
+  <ul>
+    <li><b>学前（PTKLF Early）</b>：约 3 岁到 4 岁半。</li>
+    <li><b>TK（PTKLF Later）</b>：约 4 岁到 5 岁半。</li>
+    <li><b>K</b>：PTKLF 只覆盖到 TK。报告里标为 K 的，是超出 PTKLF 范围、属于 K 阶段的能力，例如拼读单词和读句子。</li>
+  </ul>
+
+  <h2>报告里出现的领域</h2>
+  <ul>{% for name in measures %}<li>{{ name }}</li>{% endfor %}</ul>
+
+  <h2>应该怎么看</h2>
+  <ul>
+    <li><b>涂色的格子表示「这次看到了这个水平的能力」。</b>一次面试约 20 分钟，每个领域只有一到两道题，所以它说明的是当天看到的表现。</li>
+    <li><b>★ 标出孩子所在的年级。</b>涂色到 ★ 那一格，说明这个领域的表现和所在年级相当；超过 ★，说明已经表现出更高年级的能力。</li>
+    <li><b>没有涂色不等于不会。</b>可能是这次的题目没有考到，也可能是孩子当天紧张、没有说出来。报告里会写「本次未看到」。</li>
+    <li><b>不同领域有快有慢是正常的。</b>不需要每一行都在同一格。</li>
+  </ul>
+
+  <h2>官方资料</h2>
+  <ul>
+    <li><a href="{{ source_url }}" target="_blank" rel="noopener">加州教育部：California PTKLF（英文）</a></li>
+  </ul>
+  {% else %}
+  <h1>What does the "Learning Foundations Reference" on the report mean?</h1>
+  <p class="stg-lead">This page explains the "Learning Foundations Reference" part of the mock interview report: where the grade levels come from, what each box stands for, and how to read it.</p>
+
+  <h2>Where the grade levels come from</h2>
+  <p>The report uses California's <b>Preschool/Transitional Kindergarten Learning Foundations (PTKLF)</b>, published by the California Department of Education. They describe what children typically know and can do in two age ranges:</p>
+  <div class="stg-ladder stg-ladder-3">{% for name, age in bands %}<span>{{ name }}<small>{{ age }}</small></span>{% endfor %}</div>
+  <ul>
+    <li><b>Preschool (PTKLF Early)</b>: about 3 to 4½ years.</li>
+    <li><b>TK (PTKLF Later)</b>: about 4 to 5½ years.</li>
+    <li><b>Kindergarten</b>: the PTKLF stop at TK. Skills marked Kindergarten on the report go beyond the PTKLF, such as decoding words and reading sentences.</li>
+  </ul>
+
+  <h2>Areas that appear on the report</h2>
+  <ul>{% for name in measures %}<li>{{ name }}</li>{% endfor %}</ul>
+
+  <h2>How to read it</h2>
+  <ul>
+    <li><b>A coloured box means "skills at this level were seen today".</b> One interview lasts about 20 minutes, with one or two tasks per area, so it describes what was seen that day.</li>
+    <li><b>The ★ marks your child's own class.</b> Colour up to the ★ means the area matches their class; colour past the ★ means skills of a higher grade were shown.</li>
+    <li><b>An uncoloured box does not mean "cannot do".</b> The tasks may not have covered it, or the child may have been nervous and not said it aloud. The report says "not yet shown today".</li>
+    <li><b>Different areas moving at different speeds is normal.</b> The rows do not need to line up.</li>
+  </ul>
+
+  <h2>Official source</h2>
+  <ul>
+    <li><a href="{{ source_url }}" target="_blank" rel="noopener">California Department of Education: California PTKLF</a></li>
+  </ul>
+  {% endif %}
+</main>
+</body>
+</html>

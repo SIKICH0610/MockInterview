@@ -49,6 +49,8 @@ def build_analysis(
     eng_max,
     eng_indep,            # task titles
     eng_guided,
+    eng_partial=(),       # counted tasks that were partly right: titles with "(x/N)"
+    eng_helped=(),        # counted tasks, not all right, that the child did with the teacher's guidance
     eng_challenges,
     expr_sum,
     expr_max,
@@ -96,7 +98,7 @@ def build_analysis(
 
     # ---------------- english ----------------
     e = []
-    if eng_total or eng_indep or eng_guided or eng_challenges:
+    if eng_total or eng_indep or eng_guided or eng_partial or eng_challenges:
         if zh:
             e.append(f"英语部分得 {eng_total}/{eng_max} 分。")
             sub = []
@@ -104,6 +106,10 @@ def build_analysis(
                 sub.append(f"{_join(lang, eng_indep)}独立完成")
             if eng_guided:
                 sub.append(f"{_join(lang, eng_guided)}在引导后完成")
+            if eng_partial:
+                sub.append(f"{_join(lang, eng_partial)}答对了一部分")
+            if eng_helped:
+                sub.append(f"其中{_join(lang, eng_helped)}是在老师引导下作答的")
             if eng_challenges:
                 sub.append(f"{_join(lang, eng_challenges)}本次未完成，可作为下一步的练习重点")
             if sub:
@@ -115,6 +121,10 @@ def build_analysis(
                 e.append(f"{_join(lang, eng_indep)} {'were' if len(eng_indep) > 1 else 'was'} handled independently.")
             if eng_guided:
                 e.append(f"{_join(lang, eng_guided)} came together after some guidance.")
+            if eng_partial:
+                e.append(f"{_join(lang, eng_partial)} {'were' if len(eng_partial) > 1 else 'was'} partly correct.")
+            if eng_helped:
+                e.append(f"{_join(lang, eng_helped)} {'were' if len(eng_helped) > 1 else 'was'} answered with the teacher's guidance.")
             if eng_challenges:
                 e.append(f"{_join(lang, eng_challenges)} {'were' if len(eng_challenges) > 1 else 'was'} not completed this time — a natural next step.")
             out["eng"] = " ".join(e)

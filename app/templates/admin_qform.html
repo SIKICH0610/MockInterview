@@ -4,6 +4,20 @@
 {% set is_new = mode in ('bank_new', 'paper_new') %}
 {% set qt = obj.qtype or 'single' %}
 {% block title %}{{ obj.title or t('bank.new_q') }} · {{ t('bank.title') if is_bank else t('papers.title') }}{% endblock %}
+{% block scripts %}
+<script src="{{ asset_url('drag.js') }}"></script>
+<script>window.MI_DEV = {{ dev_meta() | tojson }};</script>
+<script src="{{ asset_url('evidence.js') }}"></script>
+<script>
+(function () {
+  const form = document.getElementById("qform"), host = document.getElementById("drag-editor");
+  if (!form || !host || !window.MIDrag) return;
+  MIDrag.editor(host, form.querySelector("[name=drag]"));
+  host.addEventListener("keydown", (e) => { if (e.key === "Enter") e.preventDefault(); });
+  document.getElementById("drag-add").addEventListener("click", (e) => { form.querySelector(".qf-drag").hidden = false; e.target.hidden = true; });
+})();
+</script>
+{% endblock %}
 {% block content %}
 <div class="page-head">
   <div>
@@ -74,6 +88,13 @@
     </label>
     {% endfor %}
   </div>
+  <div class="qf-drag" {{ 'hidden' if qt != 'drag' and not obj.drag }}>
+    <div class="qf-section">{{ t('drag.section') }}</div>
+    <p class="muted small">{{ t('drag.section_hint') }}</p>
+    <input type="hidden" name="drag" value="{{ obj.drag or '' }}">
+    <div id="drag-editor" class="dge"></div>
+  </div>
+  <button type="button" class="btn btn-ghost btn-sm" id="drag-add" {{ 'hidden' if qt == 'drag' or obj.drag }}>{{ t('drag.add_task') }}</button>
   <label class="qf-count" {{ 'hidden' if qt != 'count' }}>{{ t('bank.count_n') }}
     <input type="number" name="trial_max" min="1" max="30" value="{{ obj.trial_max or 6 }}" {{ 'disabled' if locked }}></label>
 
@@ -98,6 +119,14 @@
     <label>1 <input type="text" name="r1" value="{{ obj.r1 or '' }}"></label>
     <label>0 <input type="text" name="r0" value="{{ obj.r0 or '' }}"></label>
   </div>
+  {% set caps = (obj.score_caps or '').split('\n') %}
+  <div class="qf-section">{{ t('q.caps') }}</div>
+  <p class="muted small">{{ t('q.caps_hint') }}</p>
+  <div class="q-grid">
+    <label>2 <input type="text" name="cap2" value="{{ caps[0] if caps | length > 0 else '' }}" maxlength="60" placeholder="{{ t('sbtn.a2') }}"></label>
+    <label>1 <input type="text" name="cap1" value="{{ caps[1] if caps | length > 1 else '' }}" maxlength="60" placeholder="{{ t('sbtn.a1') }}"></label>
+    <label>0 <input type="text" name="cap0" value="{{ caps[2] if caps | length > 2 else '' }}" maxlength="60" placeholder="{{ t('sbtn.a0') }}"></label>
+  </div>
   <div class="qf-expr" {{ 'hidden' if qt != 'expr' }}>
     <div class="qf-section">{{ t('bank.e_rubric') }}</div>
     <div class="q-grid">
@@ -116,6 +145,21 @@
     <label>{{ t('bank.practice_answer') }} <textarea name="practice_answer" rows="4">{{ obj.practice_answer or '' }}</textarea></label>
   </div>
   <label class="q-full">{{ t('bank.home_game') }} <textarea name="home_game" rows="4">{{ obj.home_game or '' }}</textarea></label>
+  <div class="qf-section">{{ t('talk.section') }}</div>
+  <p class="muted small">{{ t('talk.hint') }}</p>
+  {% set tk = talk_raw(obj) %}
+  <div class="q-grid">
+    <label>{{ t('talk.s1') }} · English <textarea name="talk1_en" rows="3" maxlength="600">{{ tk.get('1', {}).get('en', '') }}</textarea></label>
+    <label>{{ t('talk.s1') }} · 中文 <textarea name="talk1_zh" rows="3" maxlength="600" lang="zh">{{ tk.get('1', {}).get('zh', '') }}</textarea></label>
+    <label>{{ t('talk.s0') }} · English <textarea name="talk0_en" rows="3" maxlength="600">{{ tk.get('0', {}).get('en', '') }}</textarea></label>
+    <label>{{ t('talk.s0') }} · 中文 <textarea name="talk0_zh" rows="3" maxlength="600" lang="zh">{{ tk.get('0', {}).get('zh', '') }}</textarea></label>
+  </div>
+
+  <div class="qf-section">{{ t('ev.section') }}</div>
+  <p class="muted small">{{ t('ev.hint') }}</p>
+  <input type="hidden" name="evidence" value="{{ obj.evidence or '' }}">
+  <div id="ev-editor" class="eve"></div>
+
   <details class="pb-more">
     <summary>{{ t('bank.curriculum') }}</summary>
     <div class="q-grid">
@@ -162,6 +206,9 @@
     form.querySelectorAll(".qtype-card").forEach((c) => c.classList.toggle("on", c.contains(r)));
     form.querySelector(".qf-expr").hidden = next !== "expr";
     form.querySelector(".qf-count").hidden = next !== "count";
+    const hasDrag = !!form.querySelector("[name=drag]").value;
+    form.querySelector(".qf-drag").hidden = next !== "drag" && !hasDrag;
+    form.querySelector("#drag-add").hidden = next === "drag" || hasDrag;
     // swap the rubric wording only where it is still the old type's default
     ["r2", "r1", "r0", "e2", "e1", "e0"].forEach((k) => {
       const el = form.querySelector(`[name=${k}]`);

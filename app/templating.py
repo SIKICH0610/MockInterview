@@ -46,3 +46,78 @@ def stem_parts(text):
 
 
 templates.env.globals["stem_parts"] = stem_parts
+
+
+def _score_caps(q):
+    from .bank import score_caps
+
+    return score_caps(q)
+
+
+templates.env.globals["score_caps"] = _score_caps
+
+
+def _drag_cfg(q):
+    """A question's drag-on-tablet task as a dict, or None."""
+    from . import dragq
+
+    return dragq.parse(q)
+
+
+templates.env.globals["drag_cfg"] = _drag_cfg
+
+
+def _drag_rec(rec):
+    """What the child did in a drag task, as stored on the record (dict), or None."""
+    import json
+
+    try:
+        return json.loads(rec.drag) if rec is not None and rec.drag else None
+    except ValueError:
+        return None
+
+
+templates.env.globals["drag_rec"] = _drag_rec
+
+
+def _count_cuts(n):
+    from . import bank
+
+    return bank.count_cuts(n)
+
+
+templates.env.globals["count_cuts"] = _count_cuts
+
+
+def _count_spans(n):
+    from . import bank
+
+    return bank.count_spans(n)
+
+
+templates.env.globals["count_spans"] = _count_spans
+
+
+def _dev_meta():
+    """Measures and stages for the evidence-rule editor in the question form."""
+    from . import devstage
+
+    return {"measures": [[k, v[0], v[1], v[2]] for k, v in devstage.MEASURES.items()],
+            "stages": [[s[0], s[3], s[4]] for s in devstage.STAGES]}
+
+
+templates.env.globals["dev_meta"] = _dev_meta
+
+
+def _talk_raw(q):
+    """The stored talking points of a question as written ({"1": {"en", "zh"}, "0": {...}}), for the form."""
+    import json
+
+    try:
+        v = json.loads(getattr(q, "talk", "") or "{}")
+    except ValueError:
+        v = {}
+    return v if isinstance(v, dict) else {}
+
+
+templates.env.globals["talk_raw"] = _talk_raw

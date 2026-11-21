@@ -2,14 +2,45 @@
 {% from "_macros.html" import qpanel, qcard, wbnav %}
 {% block title %}{{ st.name }} · {{ s.label }}{% endblock %}
 {% block bodyattrs %}data-teacher="{{ teacher.id }}" data-student="{{ st.id }}" data-page="student" data-live-session="{{ s.id }}"{% endblock %}
+{% block scripts %}<script src="{{ asset_url('drag.js') }}"></script>{% endblock %}
 {% block content %}
+<div class="student-sticky">
+  <div class="wb-head">
+    <div>
+      <div class="kicker">
+        <a href="/wb?session_id={{ s.id }}">{{ t('wb.kicker') }}</a> ·
+        <a href="/wb/list?session_id={{ s.id }}">{{ s.date }} · {{ s.label }}</a>
+      </div>
+      <h1 class="h-slim">{{ st.name }}
+        <span class="lv-badge lv-{{ st.level }}">{{ st.level }}</span>
+        <span class="muted-h">· {{ t('wb.recorded_by') }} {{ teacher.name }}</span>
+      </h1>
+    </div>
+    <div class="head-actions">
+      <button type="button" class="roster-toggle btn btn-ghost">{{ t('roster.title') }}</button>
+      <a class="btn btn-ghost" href="/report/{{ st.id }}">{{ t('btn.report') }}</a>
+      {{ wbnav(s, 'individual') }}
+    </div>
+  </div>
+  <div class="qchip-row" data-live-key="chips">
+    {% for code in codes %}
+    {% set r = records.get((st.id, code)) %}
+    <button type="button" class="qchip {{ 'done' if r and r.status }}" data-code="{{ code }}">
+      <span class="qchip-code">{{ code }}</span>
+      <span class="qchip-prog">{{ '✓' if r and r.status else '' }}</span>
+    </button>
+    {% endfor %}
+  </div>
+</div>
+
 <div class="split">
   <div class="roster-backdrop"></div>
-  <aside class="roster">
+  <aside class="roster" aria-label="{{ t('roster.title') }}" data-live-key="roster">
+    <div class="card-head side-head">{{ t('roster.title') }}</div>
     {% for gname, members in roster %}
     <div class="roster-group">{{ gname if gname else t('roster.ungrouped') }}</div>
     {% for m in members %}
-    <a class="roster-row {{ 'on' if m.id == st.id }}" href="/wb/student/{{ m.id }}">
+    <a class="roster-row {{ 'on' if m.id == st.id }}" href="/wb/student/{{ m.id }}" data-pid="{{ m.id }}" data-pname="{{ m.name }}">
       <div class="roster-name"><span>{{ m.name }}</span><span class="lv-badge lv-{{ m.level }}">{{ m.level }}</span></div>
       <div class="roster-prog">
         <div class="roster-bar"><div class="roster-fill" style="width: {{ (progress[m.id] / total * 100) | round }}%"></div></div>
@@ -20,36 +51,7 @@
     {% endfor %}
   </aside>
 
-  <div class="record-pane">
-    <div class="student-sticky">
-      <div class="wb-head">
-        <div>
-          <div class="kicker">
-            <a href="/wb?session_id={{ s.id }}">{{ t('wb.kicker') }}</a> ·
-            <a href="/wb/list?session_id={{ s.id }}">{{ s.date }} · {{ s.label }}</a>
-          </div>
-          <h1 class="h-slim">{{ st.name }}
-            <span class="lv-badge lv-{{ st.level }}">{{ st.level }}</span>
-            <span class="muted-h">· {{ t('wb.recorded_by') }} {{ teacher.name }}</span>
-          </h1>
-        </div>
-        <div class="head-actions">
-          <button type="button" class="roster-toggle btn btn-ghost">{{ t('roster.title') }}</button>
-          <a class="btn btn-ghost" href="/report/{{ st.id }}">{{ t('btn.report') }}</a>
-          {{ wbnav(s, 'individual') }}
-        </div>
-      </div>
-      <div class="qchip-row" data-live-key="chips">
-        {% for code in codes %}
-        {% set r = records.get((st.id, code)) %}
-        <button type="button" class="qchip {{ 'done' if r and r.status }}" data-code="{{ code }}">
-          <span class="qchip-code">{{ code }}</span>
-          <span class="qchip-prog">{{ '✓' if r and r.status else '' }}</span>
-        </button>
-        {% endfor %}
-      </div>
-    </div>
-
+  <div class="record-main" data-struct="{{ st.level }}">
     {% for code in codes %}
       {% set q = qs.get(code) %}
       {% if q %}
@@ -62,37 +64,59 @@
       {% endif %}
     {% endfor %}
 
-    <div class="card" id="events-card">
-      <div class="card-head"><span class="sec-num">SEL / CLASSROOM SKILLS</span> {{ t('events.head') }}</div>
+  </div>
+    <aside class="card dz-bar" id="events-card" aria-label="{{ t('events.head') }}">
+      <div class="card-head side-head">{{ t('events.head') }} <span class="sec-num">{{ t('dz.kicker') }}</span></div>
       <p class="muted small">{{ t('events.hint') }}</p>
-      <form id="event-form" class="event-form">
-        <select name="category">
-          <option value="SEL">SEL</option>
-          <option value="CS">{{ t('events.cat.cs') }}</option>
-        </select>
-        <select name="stage">
-          {% for stage in stages %}<option value="{{ stage }}">{{ t('stage.' ~ stage) }}</option>{% endfor %}
-        </select>
-        <input type="number" name="points" min="1" max="10" value="1" title="Points to deduct">
-        <input type="text" name="reason" placeholder="{{ t('placeholder.what') }}" required>
-        <input type="text" name="support" placeholder="{{ t('placeholder.support') }}">
-        <button class="btn" type="submit">{{ t('btn.add_event') }}</button>
+      <form id="event-form" class="event-form dz-form" data-need-follow="{{ t('dz.need_follow') }}">
+        <label class="dz-field">{{ t('dz.session') }}
+          <select name="stage">
+            {% for stage in stages %}<option value="{{ stage }}" {{ 'selected' if stage == 'Station' }}>{{ t('stage.' ~ stage) }}</option>{% endfor %}
+          </select>
+        </label>
+        {# every distraction is "came back" (1 point) or "did not come back" (2 points). One tap = one distraction,
+           saved at once; the numbers show what is recorded for this part, and the small minus takes one back. #}
+        <div class="dz-taps">
+          <div class="dz-tap dz-yes">
+            <button type="button" class="dz-add" data-for="yes"><span class="dz-add-plus">+1</span>{{ t('dz.yes_row') }}<span class="dz-pts">{{ t('dz.yes_pts') }}</span></button>
+            <div class="dz-count"><b data-count="yes">0</b><button type="button" class="dz-undo" data-for="yes" aria-label="-1" title="{{ t('dz.undo') }}">&minus;</button></div>
+          </div>
+          <div class="dz-tap dz-no">
+            <button type="button" class="dz-add" data-for="no"><span class="dz-add-plus">+1</span>{{ t('dz.no_row') }}<span class="dz-pts">{{ t('dz.no_pts') }}</span></button>
+            <div class="dz-count"><b data-count="no">0</b><button type="button" class="dz-undo" data-for="no" aria-label="-1" title="{{ t('dz.undo') }}">&minus;</button></div>
+          </div>
+        </div>
+        <div class="dz-part" id="dz-part" data-tpl="{{ t('dz.part_total') }}"></div>
+        <label class="dz-field dz-note">{{ t('dz.note') }}
+          <input type="text" name="reason" placeholder="{{ t('dz.note_ph') }}">
+        </label>
+        <span class="dz-state muted small" id="dz-state" data-saved="{{ t('dz.saved') }}" data-failed="{{ t('js.save_failed') }}"></span>
       </form>
-      <ul class="event-list" id="event-list" data-support-prefix="{{ t('events.support_prefix') }}">
+      <div class="dz-list-head">{{ t('dz.recorded') }} <span class="dz-total" id="dz-total" data-tpl="{{ t('dz.total') }}" data-none="{{ t('dz.none') }}"></span></div>
+      <ul class="event-list" id="event-list" data-live-key="events" data-del="{{ t('btn.delete') }}" data-support-prefix="{{ t('events.support_prefix') }}"
+          data-dz="{{ t('dz.item') }}" data-yes="{{ t('dz.yes_long') }}" data-no="{{ t('dz.no_long') }}">
         {% for ev in events %}
-        <li data-id="{{ ev.id }}">
+        <li data-id="{{ ev.id }}" data-count="{{ (ev.count or 1) if ev.followed else 0 }}" data-points="{{ ev.points or 0 }}"
+            data-stage="{{ ev.stage or '' }}" data-followed="{{ ev.followed or '' }}" data-reason="{{ ev.reason or '' }}">
+          {% if ev.followed %}
+          <span class="ev-stage">{{ t('stage.' ~ ev.stage) if ev.stage else '' }}</span>
+          <span class="ev-dz">{{ t('dz.item').format(n=ev.count or 1) }}</span>
+          <span class="ev-follow ev-follow-{{ ev.followed }}">{{ t('dz.yes_long') if ev.followed == 'yes' else t('dz.no_long') }}</span>
+          <span class="ev-points">&minus;{{ ev.points }}</span>
+          <span class="ev-reason">{{ ev.reason }}</span>
+          {% else %}
           <span class="ev-cat ev-{{ ev.category }}">{{ ev.category }}</span>
           <span class="ev-stage">{{ ev.stage }}</span>
           <span class="ev-points">&minus;{{ ev.points }}</span>
           <span class="ev-reason">{{ ev.reason }}</span>
+          {% endif %}
           {% if ev.support %}<span class="ev-support">{{ t('events.support_prefix') }} {{ ev.support }}</span>{% endif %}
           <span class="by">{{ teacher_names.get(ev.teacher_id, '') }} · {{ ev.created_at.strftime('%H:%M') }}</span>
-          <button type="button" class="ev-del" title="Delete">&times;</button>
+          <button type="button" class="ev-del" title="{{ t('btn.delete') }}">{{ t('btn.delete') }}</button>
         </li>
         {% endfor %}
       </ul>
-    </div>
-  </div>
+    </aside>
 </div>
 <div class="card" id="history">
   <div class="card-head"><span class="sec-num">LOG</span> {{ t('hist.student_head') }}</div>

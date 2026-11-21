@@ -9,8 +9,7 @@
 <body {% block bodyattrs %}{% endblock %}>
 <header class="topbar">
   <a class="brand" href="/">
-    <span class="brand-main">Think Academy</span>
-    <span class="brand-chip">SILICON VALLEY</span>
+    <img class="brand-logo" src="{{ asset_url('logo.png') }}" alt="Think Academy Silicon Valley" width="1200" height="113">
   </a>
   {% set u = request.state.teacher %}
   <nav class="nav">
@@ -49,6 +48,9 @@
 {% endif %}
 <script>
 window.I18N = {
+  lang: {{ cur_lang() | tojson }},
+  dragResult: {{ t('drag.result') | tojson }},
+  dragAgain: {{ t('drag.again') | tojson }},
   saved: {{ t('js.saved') | tojson }},
   saveFailed: {{ t('js.save_failed') | tojson }},
   updatedBy: {{ t('js.updated_by') | tojson }},
@@ -71,7 +73,16 @@ window.I18N = {
   liveOff: {{ t('live.off') | tojson }},
   liveConnecting: {{ t('live.connecting') | tojson }},
   liveJustNow: {{ t('live.just_now') | tojson }},
-  liveAgo: {{ t('live.ago') | tojson }}
+  liveAgo: {{ t('live.ago') | tojson }},
+  liveGroupsChanged: {{ t('live.groups_changed') | tojson }},
+  liveReloading: {{ t('live.reloading') | tojson }},
+  liveReloadWait: {{ t('live.reload_wait') | tojson }},
+  liveReloadNow: {{ t('live.reload_now') | tojson }},
+  liveJoined: {{ t('live.joined') | tojson }},
+  liveMoved: {{ t('live.moved') | tojson }},
+  liveMovedT: {{ t('live.moved_t') | tojson }},
+  liveUngrouped: {{ t('live.ungrouped') | tojson }},
+  liveDismiss: {{ t('live.dismiss') | tojson }}
 };
 </script>
 <main class="container">

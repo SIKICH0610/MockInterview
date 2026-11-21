@@ -12,7 +12,7 @@
 </div>
 
 {% macro tile(st, show_teacher=False) %}
-  <a class="student-tile" href="/wb/student/{{ st.id }}" data-live-key="t{{ st.id }}">
+  <a class="student-tile" href="/wb/student/{{ st.id }}" data-live-key="t{{ st.id }}" data-pid="{{ st.id }}" data-pname="{{ st.name }}">
     <div class="student-tile-name">{{ st.name }}</div>
     <div class="student-tile-meta">
       <span class="lv-badge lv-{{ st.level }}">{{ st.level }}</span>
@@ -24,7 +24,7 @@
 {% endmacro %}
 {% if students or others %}
 {% if others %}<div class="rubric-head list-head">{{ t('wb.my_students') }} <span class="muted small">{{ students | length }}</span></div>{% endif %}
-<div class="student-grid">
+<div class="student-grid"{% if others %} data-struct="mine:{% for st in students %}{{ st.id }},{% endfor %}"{% endif %}>
   {% for st in students %}{{ tile(st) }}{% endfor %}
 </div>
 {% if others %}

@@ -22,7 +22,7 @@ from .models import (
     Student,
 )
 
-QTYPES = ["single", "expr", "count"]
+QTYPES = ["single", "expr", "count", "drag"]  # drag = one score, worked out from a drag-on-tablet task
 DOMAINS = ["Mathematics", "English"]
 LEVELS = ["TK", "K"]  # the grades every new interview starts with; each interview can add or remove grades
 
@@ -106,6 +106,8 @@ PREFIX = {"Mathematics": "M", "English": "E"}
 # default rubric wording per type (the card text stays English, like the existing papers)
 DEFAULT_RUBRIC = {
     "r": ("Independent correct answer", "Correct after guidance", "No correct answer after guidance"),
+    "drag_r": ("Every piece in the right place", "Some pieces right, or the right places but a wrong direction",
+               "No piece in the right place"),
     "count_r": (
         "Independently gets all {n}",
         "Independently gets some, or more after a cue",
@@ -116,7 +118,72 @@ DEFAULT_RUBRIC = {
 
 # key ability + home practice + curriculum links (also filled by the spreadsheet import)
 EXTRA_FIELDS = ["key_ability", "practice", "practice_answer", "home_game",
-                "ta_topic", "ta_lesson", "ccss_module", "ccss_codes", "scope_note"]
+                "ta_topic", "ta_lesson", "ccss_module", "ccss_codes", "scope_note", "score_caps", "drag", "evidence", "talk"]
+
+
+def score_caps(q):
+    """{2: (en, zh), 1: ..., 0: ...} - a question's own captions for the task-score buttons, where it set any.
+    Stored as three lines (for 2, 1, 0), each "English | 中文"; a blank line keeps the standard caption."""
+    out = {}
+    lines = (getattr(q, "score_caps", "") or "").split("\n")
+    for v, line in zip((2, 1, 0), lines):
+        en, _, zh = line.partition("|")
+        en, zh = en.strip(), zh.strip()
+        if en or zh:
+            out[v] = (en or zh, zh or en)
+    return out
+
+
+def talk_of(q):
+    """{1: (en, zh), 0: (en, zh)} - the phrases a teacher can say to parents when the task scored 1 or 0.
+    Stored as JSON {"1": {"en", "zh"}, "0": {...}}; a missing language falls back to the other one."""
+    import json
+
+    try:
+        raw = json.loads(getattr(q, "talk", "") or "{}")
+    except ValueError:
+        return {}
+    out = {}
+    for v in (1, 0):
+        d = raw.get(str(v)) if isinstance(raw, dict) else None
+        if isinstance(d, dict):
+            en, zh = str(d.get("en") or "").strip(), str(d.get("zh") or "").strip()
+            if en or zh:
+                out[v] = (en or zh, zh or en)
+    return out
+
+
+def talk_clean(parts):
+    """{"1": {"en", "zh"}, "0": {...}} from the form's four boxes -> the stored JSON text ("" when all are empty)."""
+    import json
+
+    out = {}
+    for v in ("1", "0"):
+        en = " ".join(str(parts.get(f"talk{v}_en") or "").split())[:600]
+        zh = " ".join(str(parts.get(f"talk{v}_zh") or "").split())[:600]
+        if en or zh:
+            out[v] = {"en": en, "zh": zh}
+    return json.dumps(out, ensure_ascii=False, separators=(",", ":")) if out else ""
+
+
+def talk_for(q, r, zh=False):
+    """The phrase for this child's result on this task, or "" (full marks, not scored, or no phrase written).
+    {right} and {total} in a phrase become the child's count on a counting task."""
+    if r is None or r.status != "scored" or r.academic is None or r.academic >= 2:
+        return ""
+    pair = talk_of(q).get(r.academic)
+    if not pair:
+        return ""
+    text = pair[1] if zh else pair[0]
+    if q.trial_max and r.trial is not None:
+        text = text.replace("{right}", str(r.trial)).replace("{total}", str(q.trial_max))
+    elif "{right}" in text or "{total}" in text:  # no count recorded: drop the sentence that needs it
+        import re
+
+        text = " ".join(s for s in re.split(r"(?<=[.!?。！？])\s*", text) if "{right}" not in s and "{total}" not in s)
+    return text
+
+
 FIELDS = ["domain", "ability", "title", "prompt", "target", "setup", "r2", "r1", "r0", "e2", "e1", "e0",
           "trial_max"] + EXTRA_FIELDS
 
@@ -151,8 +218,37 @@ def apply_qtype(q, qtype, trial_max):
         q.e2 = q.e1 = q.e0 = None
 
 
+def count_cuts(n):
+    """(hi, mid) for a "count x of N" question: x >= hi scores 2, x >= mid scores 1, less scores 0.
+    6 items: 5-6 / 3-4 / 0-2.  3 items: 3 / 2 / 0-1.  Other sizes follow the same proportions."""
+    n = int(n or 0)
+    return -(-5 * n // 6), -(-n // 2)
+
+
+def count_score(n, x):
+    """The task score of a count question, from the number of items the child got right - nothing else."""
+    if x is None or not n:
+        return None
+    hi, mid = count_cuts(n)
+    return 2 if x >= hi else 1 if x >= mid else 0
+
+
+def count_spans(n):
+    """("5–6", "3–4", "0–2") for 6 items; ("3", "2", "0–1") for 3: how many right gives 2 / 1 / 0."""
+    hi, mid = count_cuts(n)
+    span = lambda a, b: f"{a}" if a == b else f"{a}–{b}"  # noqa: E731
+    return span(hi, int(n)), span(mid, hi - 1), span(0, mid - 1)
+
+
+def count_rubric(n):
+    """Rubric wording (2, 1, 0) for a count question of n items."""
+    hi, mid = count_cuts(n)
+    span = lambda a, b: f"{a}" if a == b else f"{a}–{b}"  # noqa: E731
+    return (f"{span(hi, n)} of {n} correct", f"{span(mid, hi - 1)} of {n} correct", f"{span(0, mid - 1)} of {n} correct")
+
+
 def default_rubric(qtype, n=6):
-    r = DEFAULT_RUBRIC["count_r"] if qtype == "count" else DEFAULT_RUBRIC["r"]
+    r = count_rubric(n) if qtype == "count" else DEFAULT_RUBRIC["drag_r"] if qtype == "drag" else DEFAULT_RUBRIC["r"]
     return {
         "r2": r[0].format(n=n), "r1": r[1], "r0": r[2],
         "e2": DEFAULT_RUBRIC["e"][0], "e1": DEFAULT_RUBRIC["e"][1], "e0": DEFAULT_RUBRIC["e"][2],

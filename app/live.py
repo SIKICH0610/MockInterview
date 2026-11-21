@@ -67,33 +67,51 @@ def _tracked():
     return Student, Group, (ItemRecord, StageObs, Event, Review, Summary, ReportPdf)
 
 
+ROSTER_FIELDS = ("group_id", "level", "name")
+
+
+def _changed(obj, names):
+    from sqlalchemy import inspect
+
+    attrs = inspect(obj).attrs
+    return any(attrs[n].history.has_changes() for n in names)
+
+
 def _collect(session, _ctx):
+    """Runs after each flush, while the objects still carry what was changed."""
     Student, Group, per_student = _tracked()
     bag = session.info.setdefault("live", set())
+    roster = session.info.setdefault("live_roster", set())  # sessions whose groups changed
+    fresh, gone = set(session.new), set(session.deleted)
     for obj in list(session.new) + list(session.dirty) + list(session.deleted):
         if isinstance(obj, Student):
             bag.add((obj.id, obj.session_id))
+            if obj in fresh or obj in gone or _changed(obj, ROSTER_FIELDS):
+                roster.add(obj.session_id)
         elif isinstance(obj, Group):
             bag.add((None, obj.session_id))
+            roster.add(obj.session_id)
         elif isinstance(obj, per_student):
             bag.add((obj.student_id, None))
 
 
 def _forget(session):
     session.info.pop("live", None)
+    session.info.pop("live_roster", None)
 
 
 def _after_commit(session):
     bag = session.info.pop("live", None)
+    roster = session.info.pop("live_roster", None) or set()
     if not bag:
         return
     try:
-        _publish(bag)
+        _publish(bag, roster)
     except Exception:  # noqa: BLE001 - live updates must never break a save
         log.exception("live publish failed")
 
 
-def _publish(bag):
+def _publish(bag, roster=()):
     need = sorted({st for st, sid in bag if sid is None and st})
     by_session = {}
     with side_engine.connect() as c:  # not the request pool (see db.py)
@@ -115,15 +133,17 @@ def _publish(bag):
         now = dt.datetime.now()
         msgs = []
         for sid, students in by_session.items():
+            r = 1 if sid in roster else 0
             c.execute(
                 text(
-                    "INSERT INTO live_versions (session_id, v, updated_at) VALUES (:sid, 1, :now) "
-                    "ON CONFLICT (session_id) DO UPDATE SET v = live_versions.v + 1, updated_at = :now"
+                    "INSERT INTO live_versions (session_id, v, rv, updated_at) VALUES (:sid, 1, :r, :now) "
+                    "ON CONFLICT (session_id) DO UPDATE SET v = live_versions.v + 1, "
+                    "rv = COALESCE(live_versions.rv, 0) + :r, updated_at = :now"
                 ),
-                {"sid": sid, "now": now},
+                {"sid": sid, "now": now, "r": r},
             )
-            v = c.execute(text("SELECT v FROM live_versions WHERE session_id = :sid"), {"sid": sid}).scalar()
-            msgs.append({"sid": sid, "v": v, "st": sorted(students)[:50]})
+            v, rv = c.execute(text("SELECT v, COALESCE(rv, 0) FROM live_versions WHERE session_id = :sid"), {"sid": sid}).one()
+            msgs.append({"sid": sid, "v": v, "rv": rv, "roster": bool(r), "st": sorted(students)[:50]})
         if IS_PG:
             for m in msgs:
                 c.execute(text("SELECT pg_notify(:ch, :p)"), {"ch": CHANNEL, "p": json.dumps(m)})
@@ -131,6 +151,14 @@ def _publish(bag):
     if not IS_PG:
         for m in msgs:
             _dispatch(m)
+
+
+def versions(db, sid):
+    """(v, rv): the change counter and the groups counter of a session."""
+    from .models import LiveVersion
+
+    row = db.get(LiveVersion, sid)
+    return (row.v, row.rv or 0) if row else (0, 0)
 
 
 def version(db, sid):

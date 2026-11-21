@@ -4,6 +4,12 @@
 // sent it, taken before any script below changes classes on it.
 window.__liveHash = (s) => { let h = 2166136261; for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); } return (h >>> 0).toString(36); };
 document.querySelectorAll("[data-live-key]").forEach((el) => { el.dataset.liveHash = window.__liveHash(el.outerHTML); });
+// What a page consists of (which children, which groups). When this differs from the
+// server's current answer, swapping parts is not enough and the page reloads itself.
+window.__liveStruct = (root) =>
+  [...root.querySelectorAll("[data-live-key]")].map((e) => e.dataset.liveKey).sort().join(",") + "#" +
+  [...root.querySelectorAll("[data-struct]")].map((e) => e.dataset.struct).join("|");
+window.__liveStruct0 = window.__liveStruct(document);
 
 (function () {
   "use strict";
@@ -25,23 +31,45 @@ document.querySelectorAll("[data-live-key]").forEach((el) => { el.dataset.liveHa
 
   /* ---------- card state ---------- */
 
+  // a count question's score from the number right (undefined when the card is not a count question)
+  function countScore(tv) {
+    if (!tv || !tv.dataset.hi) return undefined;
+    if (tv.dataset.val === "") return null;
+    const v = parseInt(tv.dataset.val, 10);
+    return v >= parseInt(tv.dataset.hi, 10) ? 2 : v >= parseInt(tv.dataset.mid, 10) ? 1 : 0;
+  }
+  function paintCount(card) {
+    const tv = card.querySelector(".trial-val"), out = card.querySelector(".count-score");
+    if (!out) return;
+    const sc = countScore(tv);
+    out.dataset.score = sc == null ? "" : sc;
+    out.textContent = sc == null ? "" : out.dataset.label + " " + sc;
+  }
+
   function cardState(card) {
     const pick = (kind) => {
       const b = card.querySelector('.sbtn[data-kind="' + kind + '"].on');
       return b ? parseInt(b.dataset.val, 10) : null;
     };
-    const academic = pick("a");
+    let academic = pick("a");
     const expression = pick("e");
+    const hasIndep = !!card.querySelector('.sbtn[data-kind="i"]'), indep = pick("i");  // counting tasks: done independently or not
     const tv = card.querySelector(".trial-val");
     const trial = tv && tv.dataset.val !== "" ? parseInt(tv.dataset.val, 10) : null;
+    const auto = countScore(tv);  // count questions: the score follows from the number right
+    if (auto !== undefined) academic = auto;
     let status = null;
     if (card.querySelector('.pill[data-status="not_observed"].on')) status = "not_observed";
     else if (card.querySelector('.pill[data-status="not_completed"].on')) status = "not_completed";
-    else if (academic !== null || expression !== null || trial !== null) status = "scored";
+    else if (academic !== null || expression !== null || trial !== null || indep !== null) status = "scored";
     const ta = card.querySelector(".note-ta");
     const note = ta ? ta.value : "";
     if (status === null && note.trim() !== "") status = "scored";
-    return { academic, expression, trial, status, note };
+    const zb = card.querySelector(".zh-btn");
+    const out = { academic, expression, trial, status, note };
+    if (hasIndep) out.indep = indep;
+    if (zb) out.in_chinese = zb.classList.contains("on");  // the child answered in Chinese
+    return out;
   }
 
   function applyRecord(card, rec) {
@@ -56,6 +84,10 @@ document.querySelectorAll("[data-live-key]").forEach((el) => { el.dataset.liveHa
         const b = card.querySelector('.sbtn[data-kind="e"][data-val="' + rec.expression + '"]');
         if (b) b.classList.add("on");
       }
+      if (rec.indep !== null && rec.indep !== undefined) {
+        const b = card.querySelector('.sbtn[data-kind="i"][data-val="' + rec.indep + '"]');
+        if (b) b.classList.add("on");
+      }
     }
     card.querySelectorAll(".pill").forEach((p) => {
       p.classList.toggle("on", p.dataset.status === rec.status);
@@ -65,11 +97,54 @@ document.querySelectorAll("[data-live-key]").forEach((el) => { el.dataset.liveHa
       tv.dataset.val = rec.trial === null || rec.trial === undefined ? "" : String(rec.trial);
       tv.textContent = tv.dataset.val === "" ? "–" : tv.dataset.val;
     }
+    paintCount(card);
     const ta = card.querySelector(".note-ta");
     if (ta) ta.value = rec.note || "";
+    const zb = card.querySelector(".zh-btn");
+    if (zb && rec.in_chinese !== undefined) { zb.classList.toggle("on", !!rec.in_chinese); zb.setAttribute("aria-pressed", rec.in_chinese ? "true" : "false"); }
     card.dataset.status = rec.status || "";
     updateChips();
   }
+
+  /* ---------- drag-on-tablet tasks (static/drag.js) ---------- */
+  function paintDrag(row) {
+    let rec = null;
+    try { rec = JSON.parse(row.querySelector(".drag-rec").textContent || "null"); } catch (e) { /* none */ }
+    const out = row.querySelector(".drag-result"), view = row.querySelector(".drag-view");
+    out.textContent = rec ? tr("dragResult", "Auto-scored {score}: {right} of {total} right").replace("{score}", rec.score).replace("{right}", rec.right).replace("{total}", rec.total) : "";
+    out.dataset.score = rec ? rec.score : "";
+    view.hidden = !rec;
+    if (rec) row.querySelector(".drag-start-txt").textContent = tr("dragAgain", "Do it again");
+    row.querySelector(".drag-start").classList.toggle("btn-ghost", !!rec);
+  }
+  const paintAllDrag = () => document.querySelectorAll(".drag-row").forEach(paintDrag);
+  paintAllDrag();
+  document.addEventListener("live:updated", paintAllDrag);
+  document.addEventListener("click", (ev) => {
+    const b = ev.target.closest(".drag-start, .drag-view");
+    if (!b || !window.MIDrag) return;
+    const row = b.closest(".drag-row"), card0 = b.closest(".qcard");
+    const sid = card0.dataset.student, code = card0.dataset.code;
+    const cfg = JSON.parse(row.querySelector(".drag-cfg").textContent);
+    if (b.classList.contains("drag-view")) {
+      const rec = JSON.parse(row.querySelector(".drag-rec").textContent || "null");
+      if (rec) window.MIDrag.play(cfg, { title: row.dataset.title, review: true, placement: rec.placement });
+      return;
+    }
+    window.MIDrag.play(cfg, { title: row.dataset.title, async onCheck(placement, close) {
+      const { j } = await api("/drag/check", { student_id: parseInt(sid, 10), code, placement });
+      if (!j.ok) { alert(tr("saveFailed", "Save failed")); return; }
+      close();  // the child does not see right or wrong; the teacher reads it on the card
+      const card = document.querySelector('.qcard[data-student="' + sid + '"][data-code="' + code + '"]') || card0;  // a live update may have redrawn it
+      applyRecord(card, j.current);
+      card.dataset.status = "scored";
+      const r = card.querySelector(".drag-row");
+      r.querySelector(".drag-rec").textContent = j.current.drag || "null";
+      paintDrag(r);
+      const ind = card.querySelector(".save-ind");
+      if (ind) { ind.textContent = tr("saved", "Saved"); ind.classList.add("show"); ind.classList.remove("err"); setTimeout(() => ind.classList.remove("show"), 1400); }
+    } });
+  });
 
   let saveTimers = new Map();
 
@@ -96,6 +171,8 @@ document.querySelectorAll("[data-live-key]").forEach((el) => { el.dataset.liveHa
       return;
     }
     if (j.ok) {
+      const nta = card.querySelector(".note-ta");
+      if (nta && nta.value === state.note) nta.defaultValue = nta.value;
       card.dataset.rev = j.rev;
       card.dataset.status = state.status || "";
       card.classList.toggle("st-not_observed", state.status === "not_observed");
@@ -200,6 +277,14 @@ document.querySelectorAll("[data-live-key]").forEach((el) => { el.dataset.liveHa
       return;
     }
 
+    const zb = ev.target.closest(".zh-btn");
+    if (zb) {  // the child answered this task in Chinese
+      const on = zb.classList.toggle("on");
+      zb.setAttribute("aria-pressed", on ? "true" : "false");
+      queueSave(card, 150);
+      return;
+    }
+
     const pill = ev.target.closest(".pill");
     if (pill) {
       const was = pill.classList.contains("on");
@@ -218,9 +303,10 @@ document.querySelectorAll("[data-live-key]").forEach((el) => { el.dataset.liveHa
       const max = parseInt(tv.dataset.max, 10);
       let v = tv.dataset.val === "" ? null : parseInt(tv.dataset.val, 10);
       if (step.classList.contains("tplus")) v = v === null ? 1 : Math.min(max, v + 1);
-      else v = v === null || v === 0 ? null : v - 1;
+      else v = v === null ? 0 : v === 0 ? null : v - 1;  // from blank, minus records 0; minus again clears it
       tv.dataset.val = v === null ? "" : String(v);
       tv.textContent = v === null ? "–" : String(v);
+      paintCount(card);
       card.querySelectorAll(".pill").forEach((p) => p.classList.remove("on"));
       queueSave(card, 400);
       return;
@@ -254,61 +340,132 @@ document.querySelectorAll("[data-live-key]").forEach((el) => { el.dataset.liveHa
 
   /* ---------- events (student page) ---------- */
 
+  // Child page: the roster and the distraction bar sit on one line just below the sticky header
+  // (its height changes when the task chips wrap) and both end 14px above the bottom of the screen.
+  const dzBar = document.querySelector(".dz-bar"), stickyHead = document.querySelector(".student-sticky");
+  if (dzBar && stickyHead) {
+    const split = dzBar.closest(".split") || dzBar;
+    let stuckTop = 0, queued = false;
+    const fit = () => {
+      queued = false;
+      // before the header sticks the columns start a little lower: use where the bar really is
+      const top = Math.max(stuckTop, dzBar.getBoundingClientRect().top);
+      split.style.setProperty("--side-h", Math.max(240, Math.round(window.innerHeight - top - 14)) + "px");
+    };
+    const place = () => {
+      stuckTop = Math.round((parseFloat(getComputedStyle(stickyHead).top) || 0) + stickyHead.getBoundingClientRect().height + 8);
+      split.style.setProperty("--dz-top", stuckTop + "px");
+      fit();
+    };
+    place();
+    if (window.ResizeObserver) new ResizeObserver(place).observe(stickyHead);
+    window.addEventListener("resize", place);
+    window.addEventListener("scroll", () => { if (!queued) { queued = true; requestAnimationFrame(fit); } }, { passive: true });
+  }
+
+  // the line above the list: everything recorded so far for this child (the form below only adds a new record)
+  function paintDzTotal() {
+    const out = document.getElementById("dz-total"), list = document.getElementById("event-list");
+    if (!out || !list) return;
+    let n = 0, p = 0;
+    list.querySelectorAll("li").forEach((li) => { n += parseInt(li.dataset.count || "0", 10) || 0; p += parseInt(li.dataset.points || "0", 10) || 0; });
+    out.textContent = list.children.length ? out.dataset.tpl.replace("{n}", n).replace("{p}", p) : out.dataset.none;
+  }
+  paintDzTotal();
+  document.addEventListener("live:updated", paintDzTotal);
   const evForm = document.getElementById("event-form");
   if (evForm) {
-    evForm.addEventListener("submit", async (ev) => {
-      ev.preventDefault();
-      const fd = new FormData(evForm);
-      const payload = {
-        student_id: parseInt(document.body.dataset.student, 10),
-        category: fd.get("category"),
-        stage: fd.get("stage"),
-        points: parseInt(fd.get("points") || "1", 10),
-        reason: fd.get("reason"),
-        support: fd.get("support"),
-        teacher_id: teacherId,
-      };
-      const { j } = await api("/event/add", payload);
-      if (j.ok) {
+    // Distraction counter: for the chosen session part, the form shows what is already recorded
+    // (times, followed or not, note). Change it and save to correct it; 0 removes the record.
+    // Area and points are worked out by the server.
+    const out = { yes: evForm.querySelector('[data-count="yes"]'), no: evForm.querySelector('[data-count="no"]') };
+    const note = evForm.querySelector('input[name="reason"]');
+    const stageSel = evForm.querySelector('select[name="stage"]');
+    const part = document.getElementById("dz-part"), state = document.getElementById("dz-state");
+    const listEl = () => document.getElementById("event-list");  // a live update may redraw it
+    let cur = { yes: 0, no: 0, reason: "" }, busy = false;
+    const dirty = () => busy || note.value.trim() !== cur.reason;
+    function paint() {
+      out.yes.textContent = cur.yes; out.no.textContent = cur.no;
+      evForm.querySelectorAll(".dz-undo").forEach((b) => { b.disabled = cur[b.dataset.for] === 0; });
+      part.textContent = part.dataset.tpl.replace("{n}", cur.yes + cur.no).replace("{p}", cur.yes + 2 * cur.no);
+    }
+    function recorded(stage) {  // newest first in the list
+      const lis = [...listEl().querySelectorAll("li")].filter((li) => li.dataset.followed && li.dataset.stage === stage);
+      const sum = (k) => lis.filter((li) => li.dataset.followed === k).reduce((t, li) => t + (parseInt(li.dataset.count || "0", 10) || 0), 0);
+      return { yes: sum("yes"), no: sum("no"), reason: (lis.find((li) => li.dataset.reason) || { dataset: {} }).dataset.reason || "" };
+    }
+    function load() {
+      cur = recorded(stageSel.value);
+      note.value = cur.reason; note.defaultValue = note.value;
+      paint();
+    }
+    load();
+    stageSel.addEventListener("change", load);
+    document.addEventListener("live:updated", () => { if (!dirty()) load(); });
+    // one tap = one distraction of that kind, saved at once (the two kinds cannot be entered together)
+    async function save(next) {
+      if (busy) return;
+      busy = true;
+      evForm.classList.add("dz-busy");
+      const stage = stageSel.value;
+      const { j } = await api("/event/set", { student_id: parseInt(document.body.dataset.student, 10), stage, yes: next.yes, no: next.no, reason: note.value });
+      busy = false;
+      evForm.classList.remove("dz-busy");
+      if (!j.ok) { state.textContent = state.dataset.failed; state.classList.add("err"); return; }
+      state.classList.remove("err");
+      state.textContent = state.dataset.saved;
+      setTimeout(() => { if (state.textContent === state.dataset.saved) state.textContent = ""; }, 1600);
+      const list = listEl();
+      [...list.querySelectorAll("li")].filter((li) => li.dataset.followed && li.dataset.stage === stage).forEach((li) => li.remove());
+      (j.items || []).slice().reverse().forEach((it) => {
         const li = document.createElement("li");
-        li.dataset.id = j.id;
+        li.dataset.id = it.id; li.dataset.count = it.count; li.dataset.points = it.points;
+        li.dataset.stage = it.stage; li.dataset.followed = it.followed; li.dataset.reason = it.reason || "";
         li.innerHTML =
-          '<span class="ev-cat ev-' + j.category + '">' + j.category + "</span>" +
-          '<span class="ev-stage">' + j.stage + "</span>" +
-          '<span class="ev-points">−' + j.points + "</span>" +
-          '<span class="ev-reason"></span>' +
-          (j.support ? '<span class="ev-support"></span>' : "") +
-          '<span class="by">' + (j.by || "") + " · " + j.time + "</span>" +
-          '<button type="button" class="ev-del" title="Delete">×</button>';
-        li.querySelector(".ev-reason").textContent = j.reason;
-        if (j.support) {
-          const prefix = document.getElementById("event-list").dataset.supportPrefix || "Support:";
-          li.querySelector(".ev-support").textContent = prefix + " " + j.support;
-        }
-        document.getElementById("event-list").prepend(li);
-        evForm.querySelector('input[name="reason"]').value = "";
-        evForm.querySelector('input[name="support"]').value = "";
-      }
+          '<span class="ev-stage"></span><span class="ev-dz"></span>' +
+          '<span class="ev-follow ev-follow-' + (it.followed === "yes" ? "yes" : "no") + '"></span>' +
+          '<span class="ev-points">−' + parseInt(it.points, 10) + "</span>" +
+          '<span class="ev-reason"></span><span class="by"></span>' +
+          '<button type="button" class="ev-del"></button>';
+        li.querySelector(".ev-stage").textContent = stageSel.options[stageSel.selectedIndex].text;
+        li.querySelector(".ev-dz").textContent = (list.dataset.dz || "Distracted ×{n}").replace("{n}", it.count);
+        li.querySelector(".ev-follow").textContent = it.followed === "yes" ? list.dataset.yes : list.dataset.no;
+        li.querySelector(".ev-reason").textContent = it.reason;
+        li.querySelector(".by").textContent = (it.by || "") + " · " + it.time;
+        li.querySelector(".ev-del").textContent = list.dataset.del || "Delete";
+        list.prepend(li);
+      });
+      paintDzTotal();
+      load();
+    }
+    evForm.addEventListener("click", (ev) => {
+      const b = ev.target.closest(".dz-add, .dz-undo");
+      if (!b || busy) return;
+      const k = b.dataset.for, d = b.classList.contains("dz-add") ? 1 : -1;
+      const next = { yes: cur.yes, no: cur.no };
+      next[k] = Math.max(0, Math.min(99, next[k] + d));
+      if (next[k] !== cur[k]) save(next);
     });
-    document.getElementById("event-list").addEventListener("click", async (ev) => {
-      const del = ev.target.closest(".ev-del");
+    note.addEventListener("change", () => { if (cur.yes + cur.no > 0 && note.value.trim() !== cur.reason) save({ yes: cur.yes, no: cur.no }); });
+    evForm.addEventListener("submit", (ev) => ev.preventDefault());
+    // delete a record (two taps); works for any record in the list, also after a live redraw
+    document.addEventListener("click", async (ev) => {
+      const del = ev.target.closest("#event-list .ev-del");
       if (!del) return;
       const li = del.closest("li");
       if (!del.dataset.arm) {
         del.dataset.arm = "1";
+        del.dataset.label = del.textContent;
         del.classList.add("ev-del-armed");
         del.textContent = I18N.tapAgainDel || "Tap again to delete";
         setTimeout(() => {
-          if (del.dataset.arm) {
-            del.dataset.arm = "";
-            del.classList.remove("ev-del-armed");
-            del.textContent = "×";
-          }
+          if (del.dataset.arm) { del.dataset.arm = ""; del.classList.remove("ev-del-armed"); del.textContent = del.dataset.label; }
         }, 3000);
         return;
       }
       const { j } = await api("/event/delete", { id: parseInt(li.dataset.id, 10) });
-      if (j.ok) li.remove();
+      if (j.ok) { li.remove(); paintDzTotal(); if (!dirty()) load(); }
     });
   }
 
@@ -465,13 +622,15 @@ document.querySelectorAll("[data-live-key]").forEach((el) => { el.dataset.liveHa
       "blur",
       async (ev) => {
         if (ev.target && ev.target.classList && ev.target.classList.contains("sep-note")) {
-          const card = ev.target.closest(".single-card");
+          const card = ev.target.closest(".obs-card");  // separation cards and the rating cards of every other part
+          if (!card) return;
           const { j } = await api("/stage/single", {
             student_id: parseInt(card.dataset.student, 10),
             stage: card.dataset.stage,
             note: ev.target.value,
             teacher_id: teacherId,
           });
+          if (j.ok) ev.target.defaultValue = ev.target.value;
           flashInd(card, !!j.ok);
         }
       },
@@ -800,6 +959,7 @@ document.querySelectorAll("[data-live-key]").forEach((el) => { el.dataset.liveHa
       if (start) start.classList.toggle("disabled", !ok);
     }
 
+    let moving = 0;  // moves on their way to the server: the board is not redrawn under them
     async function moveChip(chip, col) {
       const fromList = chip.closest(".gb-list");
       const toList = col.querySelector(".gb-list");
@@ -808,10 +968,11 @@ document.querySelectorAll("[data-live-key]").forEach((el) => { el.dataset.liveHa
       updateCounts();
       refreshBanner();
       const gid = col.dataset.group;
+      moving++;
       const { j } = await api("/student/group", {
         student_id: parseInt(chip.dataset.student, 10),
         group_id: gid ? parseInt(gid, 10) : null,
-      });
+      }).finally(() => { moving--; });
       if (!j.ok) {
         fromList.appendChild(chip);
         updateCounts();
@@ -879,6 +1040,66 @@ document.querySelectorAll("[data-live-key]").forEach((el) => { el.dataset.liveHa
       }
     });
 
+    // Another admin's changes (or a child's grade changed elsewhere) show up by themselves.
+    const boardSig = (b) => [...b.querySelectorAll(".gb-col[data-group]")].map((c) => {
+      const tsel = c.querySelector(".gb-teacher");
+      const name = c.querySelector(".gb-col-name");
+      const kids = [...c.querySelectorAll(".gb-chip")].map((k) => k.dataset.student + (k.querySelector(".lv-badge") || {}).textContent).sort();
+      return c.dataset.group + ":" + (tsel ? tsel.value : "") + ":" + (name ? name.firstChild.textContent.trim() : "") + ":" + kids.join(",");
+    }).join("|");
+    document.addEventListener("live:doc", (e) => {
+      const nb = e.detail.doc.querySelector(".gb-board");
+      if (!nb || boardSig(nb) === boardSig(gbBoard)) return;
+      const a = document.activeElement;
+      if (drag || sel || moving > 0 || (a && a.matches("select") && gbBoard.contains(a))) {
+        if (window.__liveRefresh) window.__liveRefresh(1500);
+        return;
+      }
+      const left = gbBoard.scrollLeft;
+      const pool = gbBoard.querySelector(".gb-pool .gb-list");
+      const poolTop = pool ? pool.scrollTop : 0;
+      gbBoard.querySelectorAll(".gb-col[data-group]").forEach((c) => c.remove());
+      const add = gbBoard.querySelector(".gb-add");
+      nb.querySelectorAll(".gb-col[data-group]").forEach((c) => gbBoard.insertBefore(document.importNode(c, true), add));
+      gbBoard.scrollLeft = left;
+      const pool2 = gbBoard.querySelector(".gb-pool .gb-list");
+      if (pool2) pool2.scrollTop = poolTop;
+      updateCounts();
+      refreshBanner();
+      paintPresence();
+    });
+
+    // Who has a scoring page open, and whether it already shows these groups.
+    let presence = null;
+    function paintPresence() {
+      if (!presence) return;
+      const line = document.getElementById("gb-presence");
+      if (line) {
+        line.hidden = false;
+        line.dataset.state = !presence.n ? "none" : presence.ok === presence.n ? "ok" : "wait";
+        line.querySelector(".gb-presence-text").textContent = presence.summary;
+      }
+      gbBoard.querySelectorAll('.gb-col[data-group]:not([data-group=""])').forEach((c) => {
+        const box = c.querySelector(".gb-pres");
+        const tsel = c.querySelector(".gb-teacher");
+        if (!box || !tsel) return;
+        const d = tsel.value ? presence.teachers[tsel.value] : null;
+        box.dataset.state = !tsel.value ? "" : d ? (d.ok ? "on" : "wait") : "off";
+        box.textContent = !tsel.value ? "" : d ? d.text : presence.offline;
+      });
+    }
+    async function loadPresence() {
+      if (document.hidden) return;
+      try {
+        const r = await fetch("/admin/sessions/" + document.body.dataset.session + "/presence", { credentials: "same-origin" });
+        if (r.ok) { presence = await r.json(); paintPresence(); }
+      } catch (e) { /* next round */ }
+    }
+    loadPresence();
+    setInterval(loadPresence, 8000);
+    document.addEventListener("live:updated", () => setTimeout(loadPresence, 1200));
+    gbBoard.addEventListener("change", (e) => { if (e.target.closest(".gb-teacher")) paintPresence(); });
+
     const rndBtn = document.getElementById("gb-random");
     if (rndBtn) {
       rndBtn.addEventListener("click", async () => {
@@ -945,15 +1166,15 @@ document.querySelectorAll("[data-live-key]").forEach((el) => { el.dataset.liveHa
     });
   });
 
-  document.querySelectorAll(".group-teacher").forEach((sel) => {
-    sel.addEventListener("change", async () => {
-      const { j } = await api("/group/teacher", {
-        group_id: parseInt(sel.dataset.group, 10),
-        teacher_id: sel.value || null,
-      });
-      sel.style.outline = j.ok ? "2px solid #2e7d32" : "2px solid #b3261e";
-      setTimeout(() => (sel.style.outline = ""), 900);
+  document.addEventListener("change", async (ev) => {
+    const sel = ev.target.closest && ev.target.closest(".group-teacher");
+    if (!sel) return;
+    const { j } = await api("/group/teacher", {
+      group_id: parseInt(sel.dataset.group, 10),
+      teacher_id: sel.value || null,
     });
+    sel.style.outline = j.ok ? "2px solid #2e7d32" : "2px solid #b3261e";
+    setTimeout(() => (sel.style.outline = ""), 900);
   });
 })();
 
@@ -996,6 +1217,10 @@ document.querySelectorAll("[data-live-key]").forEach((el) => { el.dataset.liveHa
 // swaps only the parts that changed. A part you are working in (focused, typed
 // into, or touched in the last few seconds) is left alone and retried later.
 // If the stream is unavailable, it falls back to checking every 10 seconds.
+// When the groups change (a child joins or leaves this page, a group gets another
+// teacher), swapping parts is not enough: the page reloads itself once the user is
+// not typing, and says what changed. Each page also checks in every 20 s so the
+// grouping board can show who is online.
 (function () {
   const sid = document.body.dataset.liveSession;
   if (!sid || !window.fetch || !window.DOMParser) return;
@@ -1007,8 +1232,10 @@ document.querySelectorAll("[data-live-key]").forEach((el) => { el.dataset.liveHa
   const sel = (key) => `[data-live-key="${window.CSS && CSS.escape ? CSS.escape(key) : key}"]`;
 
   // remember where the user is working
+  let lastAct = 0;
   ["pointerdown", "input", "keydown"].forEach((t) =>
     document.addEventListener(t, (e) => {
+      lastAct = Date.now();
       const u = e.target && e.target.closest && e.target.closest("[data-live-key]");
       if (u) u.dataset.liveTouched = String(Date.now());
     }, true));
@@ -1037,16 +1264,117 @@ document.querySelectorAll("[data-live-key]").forEach((el) => { el.dataset.liveHa
   }
   setInterval(paint, 5000);
 
-  let timer = null, again = null, running = false, lastV = null;
+  // ---- a notice bar: "groups were updated" (before the reload) and what changed (after it) ----
+  let bar = null;
+  function showBar(title, lines, btnText, onBtn) {
+    if (!bar) { bar = document.createElement("div"); bar.className = "live-bar"; document.body.appendChild(bar); }
+    bar.textContent = "";
+    const txt = document.createElement("div");
+    txt.className = "live-bar-txt";
+    const b = document.createElement("b");
+    b.textContent = title;
+    txt.appendChild(b);
+    (lines || []).forEach((l) => { const d = document.createElement("div"); d.textContent = l; txt.appendChild(d); });
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "btn btn-sm";
+    btn.textContent = btnText;
+    btn.addEventListener("click", onBtn);
+    bar.append(txt, btn);
+  }
+  function hideBar() { if (bar) { bar.remove(); bar = null; } }
+  const store = { get(k) { try { return sessionStorage.getItem(k); } catch (e) { return null; } },
+                  set(k, v) { try { sessionStorage.setItem(k, v); } catch (e) { /* private mode */ } },
+                  del(k) { try { sessionStorage.removeItem(k); } catch (e) { /* ignore */ } } };
+  try {
+    const n = JSON.parse(store.get("mi_notice") || "null");
+    store.del("mi_notice");
+    if (n && Date.now() - n.at < 60000) setTimeout(() => notice(n.lines), 0);
+  } catch (e) { /* ignore */ }
+
+  // ---- the page's structure changed: reload when the user is not in the middle of something ----
+  const structOf = window.__liveStruct, struct0 = window.__liveStruct0;
+  const people = (root) => { const m = new Map(); root.querySelectorAll("[data-pid]").forEach((e) => m.set(e.dataset.pid, e.dataset.pname || "")); return m; };
+  let pending = null, lastMsg = 0, going = false;
+  function unsaved() {
+    if (document.querySelector(".saving")) return true;
+    for (const f of document.querySelectorAll("input[type=text], input:not([type]), textarea")) {
+      if (f.value !== f.defaultValue) return true;
+    }
+    return false;
+  }
+  function tooManyReloads() {  // never loop: at most 3 automatic reloads in 30 s
+    let log = [];
+    try { log = JSON.parse(store.get("mi_reloads") || "[]"); } catch (e) { /* ignore */ }
+    log = log.filter((t) => Date.now() - t < 30000);
+    return log.length >= 3 ? true : (log.push(Date.now()), store.set("mi_reloads", JSON.stringify(log)), false);
+  }
+  // who joined / left: [lines] for the notice
+  async function changes(before, after) {
+    const lines = [];
+    try {
+      const joined = [...after].filter(([id]) => !before.has(id)).map(([, name]) => name);
+      const left = [...before].filter(([id]) => !after.has(id)).map(([id]) => id);
+      if (joined.length && before.size) lines.push(tr("liveJoined", "Joined your list: {names}.").replace("{names}", joined.join(", ")));
+      if (left.length && left.length <= 40) {
+        const r = await fetch(`/wb/live/${sid}/where?ids=${left.join(",")}`, { credentials: "same-origin" });
+        if (r.ok) {
+          (await r.json()).items.forEach((it) => {
+            const k = !it.group ? "liveUngrouped" : it.teacher ? "liveMovedT" : "liveMoved";
+            lines.push(tr(k, "{name} moved to {group}.").replace("{name}", it.name).replace("{group}", it.group).replace("{teacher}", it.teacher));
+          });
+        }
+      }
+    } catch (e) { /* the notice is a nicety */ }
+    return lines.slice(0, 8);
+  }
+  function notice(lines) {
+    showBar(tr("liveGroupsChanged", "Groups were updated"), lines, tr("liveDismiss", "Close"), hideBar);
+    bar.dataset.kind = "";
+    const mine = bar;
+    setTimeout(() => { if (bar === mine && bar.dataset.kind !== "pending") hideBar(); }, 25000);
+  }
+  async function go() {
+    if (going || !pending) return;
+    going = true;
+    const p = pending;
+    const lines = await changes(people(document), people(p.doc));
+    store.set("mi_notice", JSON.stringify({ at: Date.now(), lines }));
+    if (p.url) location.href = p.url; else location.reload();
+  }
+  setInterval(() => {
+    if (!pending || going || document.hidden || document.body.classList.contains("dg-open")) return;  // never under a child doing a drag task
+    const quiet = Date.now() - lastMsg > 2500 && Date.now() - lastAct > 3000;  // let a run of changes finish first
+    const waitTyping = unsaved();
+    if (quiet && !waitTyping && !tooManyReloads()) { go(); return; }
+    showBar(tr("liveGroupsChanged", "Groups were updated"),
+            [waitTyping ? tr("liveReloadWait", "This page reloads when you finish typing.") : tr("liveReloading", "This page reloads by itself in a moment.")],
+            tr("liveReloadNow", "Reload now"), go);
+    bar.dataset.kind = "pending";
+  }, 500);
+
+  let timer = null, again = null, running = false, lastV = null, seenRv = null, shownRv = null;
   function schedule(delay) { clearTimeout(timer); timer = setTimeout(refresh, delay == null ? 300 : delay); }
+  window.__liveRefresh = schedule;
   async function refresh() {
     if (document.hidden) { pendingHidden = true; return; }
     if (running) { schedule(600); return; }
     running = true;
     try {
+      const rvBefore = seenRv;
       const r = await fetch(location.pathname + location.search, { headers: { "X-Live": "1" }, credentials: "same-origin" });
-      if (!r.ok || r.redirected) return;
+      if (!r.ok) return;
+      // "grouping is not finished" (a child is between groups for a moment): stay here, the next change retries
+      if (r.redirected && /[?&]msg=gate\b/.test(r.url)) return;
       const doc = new DOMParser().parseFromString(await r.text(), "text/html");
+      const before = people(document);
+      if (r.redirected || structOf(doc) !== struct0) {
+        // e.g. this child now belongs to another teacher, or a child joined this group
+        pending = { doc, url: r.redirected ? r.url : null };
+        lastSync = Date.now(); paint();
+        return;
+      }
+      if (pending) { pending = null; if (bar && bar.dataset.kind === "pending") hideBar(); }  // changed back meanwhile
       let skipped = 0;
       doc.querySelectorAll("[data-live-key]").forEach((nu) => {
         const cur = document.querySelector(sel(nu.dataset.liveKey));
@@ -1057,16 +1385,40 @@ document.querySelectorAll("[data-live-key]").forEach((el) => { el.dataset.liveHa
         const mine = Date.now() - parseInt(cur.dataset.liveTouched || "0", 10) < 15000;
         const fresh = document.importNode(nu, true);
         fresh.dataset.liveHash = h;
+        const top = cur.scrollTop, open = [...cur.querySelectorAll("details")].map((d) => d.open);
         cur.replaceWith(fresh);
+        if (top) fresh.scrollTop = top;
+        fresh.querySelectorAll("details").forEach((d, i) => { if (open[i]) d.open = true; });
         if (!mine) { fresh.classList.add("live-flash"); setTimeout(() => fresh.classList.remove("live-flash"), 1800); }
       });
       lastSync = Date.now(); paint();
+      if (rvBefore !== null && rvBefore !== shownRv) { shownRv = rvBefore; beat(); }
+      // the list on the left of a child page is swapped in place: still say who joined or left
+      const after = people(document);
+      if (!skipped && (after.size !== before.size || [...after.keys()].some((id) => !before.has(id)))) {
+        changes(before, after).then((lines) => { if (lines.length) notice(lines); });
+      }
+      document.dispatchEvent(new CustomEvent("live:doc", { detail: { doc } }));
       document.dispatchEvent(new CustomEvent("live:updated"));
       clearTimeout(again);
       if (skipped) again = setTimeout(() => schedule(0), BUSY_MS + 300);
     } catch (e) { /* network hiccup: the next event or poll retries */ }
     finally { running = false; }
   }
+
+  // ---- "still here": who is on which page, and which groups version the page shows ----
+  let cid = store.get("mi_cid");
+  if (!cid) { cid = Math.random().toString(36).slice(2, 12) + Date.now().toString(36); store.set("mi_cid", cid); }
+  const body = document.body.dataset;
+  function beat() {
+    if (document.hidden || shownRv === null) return;
+    fetch(`/wb/live/${sid}/beat`, {
+      method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ cid, page: body.page || "", stage: body.stage || "", group_id: body.group || null,
+                             student_id: body.student || null, rv: shownRv }),
+    }).catch(() => { /* next beat */ });
+  }
+  setInterval(beat, 20000);
 
   // stream first, polling as the fallback. Some links (e.g. Cloudflare's free
   // quick tunnel) accept the stream but never deliver it: no hello within 8 s
@@ -1075,8 +1427,9 @@ document.querySelectorAll("[data-live-key]").forEach((el) => { el.dataset.liveHa
   async function poll() {
     try {
       const j = await (await fetch(`/wb/live/${sid}/version`, { credentials: "same-origin" })).json();
-      if (lastV !== null && j.v !== lastV) schedule(0);
-      if (lastV === null || j.v !== lastV) lastV = j.v;
+      if (j.rv != null) seenRv = j.rv;
+      if (lastV === null || j.v !== lastV) schedule(0);  // the first answer too: catches what was saved while the page loaded
+      lastV = j.v;
       lastSync = Date.now();
       if (mode !== "live") { mode = "poll"; }
       paint();
@@ -1096,9 +1449,10 @@ document.querySelectorAll("[data-live-key]").forEach((el) => { el.dataset.liveHa
     helloTimer = setTimeout(() => {
       if (mode !== "live" && es) { stalled = true; es.close(); es = null; startPolling(); }
     }, 8000);
-    es.addEventListener("hello", () => { clearTimeout(helloTimer); failures = 0; mode = "live"; lastSync = Date.now(); stopPolling(); paint(); });
+    es.addEventListener("hello", () => { clearTimeout(helloTimer); failures = 0; mode = "live"; lastSync = Date.now(); stopPolling(); paint(); poll(); });
     es.onmessage = (ev) => {
-      try { const m = JSON.parse(ev.data); if (m.v != null) lastV = m.v; } catch (e) { /* ignore */ }
+      try { const m = JSON.parse(ev.data); if (m.v != null) lastV = m.v; if (m.rv != null) seenRv = m.rv; } catch (e) { /* ignore */ }
+      lastMsg = Date.now();
       schedule();
     };
     es.onerror = () => {
@@ -1108,7 +1462,7 @@ document.querySelectorAll("[data-live-key]").forEach((el) => { el.dataset.liveHa
     };
   }
   document.addEventListener("visibilitychange", () => {
-    if (!document.hidden) { if (pendingHidden) { pendingHidden = false; schedule(0); } else poll(); }
+    if (!document.hidden) { if (pendingHidden) { pendingHidden = false; schedule(0); } else poll(); beat(); }
   });
   paint();
   connect();

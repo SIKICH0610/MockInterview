@@ -494,6 +494,88 @@ def grouping_board(sid: int, request: Request, msg: str = "", db: Session = Depe
     )
 
 
+@router.post("/drag/asset")
+async def drag_asset_upload(request: Request, file: UploadFile = File(...), db: Session = Depends(get_db)):
+    """A picture for a drag-on-tablet task (background or piece), uploaded from the task editor."""
+    from ..models import DragAsset
+
+    data = await file.read()
+    kinds = {"image/png": b"\x89PNG", "image/jpeg": b"\xff\xd8\xff", "image/webp": b"RIFF", "image/gif": b"GIF8"}
+    mime = next((m for m, sig in kinds.items() if data.startswith(sig)), None)
+    if not mime or len(data) > 8 * 1024 * 1024:
+        return JSONResponse(status_code=400, content={"ok": False, "error": t("drag.bad_image")})
+    w = h = 0
+    try:
+        from PIL import Image
+
+        w, h = Image.open(io.BytesIO(data)).size
+    except Exception:  # noqa: BLE001 - the size is a convenience; the browser measures it too
+        pass
+    a = DragAsset(name=(file.filename or "")[:255], mime=mime, data=data, w=w, h=h, created_by=request.state.teacher.id)
+    db.add(a)
+    db.commit()
+    return {"ok": True, "id": a.id, "w": w, "h": h}
+
+
+ONLINE_SECONDS = 50  # pages check in about every 20 s while they are on screen
+
+
+@router.get("/sessions/{sid}/presence")
+def session_presence(sid: int, request: Request, db: Session = Depends(get_db)):
+    """Who has a scoring page of this session open right now, and whether those pages already
+    show the latest groups. Read by the grouping board every few seconds."""
+    from datetime import datetime, timedelta
+
+    from .. import live
+    from ..i18n import custom_stage_label, cur_lang
+    from ..models import Presence
+
+    now = datetime.now()
+    db.query(Presence).filter(Presence.seen_at < now - timedelta(days=1)).delete(synchronize_session=False)
+    db.commit()
+    _, rv = live.versions(db, sid)
+    rows = (db.query(Presence).filter(Presence.session_id == sid, Presence.seen_at >= now - timedelta(seconds=ONLINE_SECONDS))
+            .order_by(Presence.seen_at.desc()).all())
+    names = {x.id: x.name for x in db.query(Teacher).all()}
+    kids = {}
+    want = [r.student_id for r in rows if r.page == "student" and r.student_id]
+    if want:
+        kids = {x.id: x.name for x in db.query(Student).filter(Student.session_id == sid, Student.id.in_(want)).all()}
+    s = db.get(AssessSession, sid)
+    pid = (s.paper_id or qbank.default_paper_id(db)) if s else None
+
+    def where(r):
+        if r.page == "student":
+            return t("pres.page.student").format(name=kids.get(r.student_id, "?"))
+        if r.page == "stage":
+            label = custom_stage_label(r.stage, cur_lang() == "zh", pid) or t("stage." + r.stage)
+            return t("pres.page.stage").format(stage=label)
+        return t("pres.page." + r.page)
+
+    scoring = [r for r in rows if r.page != "grouping"]
+    teachers = {}
+    for r in scoring:  # newest first: the label is the page the teacher touched last
+        d = teachers.setdefault(r.teacher_id, {"n": 0, "label": where(r), "ok": True})
+        d["n"] += 1
+        d["ok"] = d["ok"] and (r.rv or 0) >= rv
+    for d in teachers.values():
+        d["text"] = t("pres.online") + " · " + d["label"] + (" · " + t("pres.devices").format(n=d["n"]) if d["n"] > 1 else "")
+        if not d["ok"]:
+            d["text"] += " · " + t("pres.stale")
+    n, ok = len(scoring), sum(1 for r in scoring if (r.rv or 0) >= rv)
+    if not n:
+        summary = t("pres.sum_none")
+    elif ok == n:
+        summary = t("pres.sum_all").format(n=n)
+    else:
+        summary = t("pres.sum_some").format(ok=ok, n=n)
+    me = request.state.teacher
+    board = sorted({names.get(r.teacher_id, "?") for r in rows if r.page == "grouping" and r.teacher_id != me.id})
+    if board:
+        summary += " " + t("pres.board_also").format(names=", ".join(board))
+    return {"rv": rv, "n": n, "ok": ok, "summary": summary, "offline": t("pres.offline"), "teachers": teachers}
+
+
 @router.post("/sessions/{sid}/groups/add")
 def add_group(
     sid: int,
@@ -1167,6 +1249,19 @@ def _fill_question(obj, form, qtype_allowed=True):
         if f in form:  # older forms without these fields leave them untouched
             v = (form.get(f) or "").strip()
             setattr(obj, f, v[:255] if f in ("ta_lesson", "ccss_module", "ccss_codes") else v)
+    if any(k in form for k in ("cap2", "cap1", "cap0")):  # the question's own captions for the 2 / 1 / 0 buttons
+        caps = [" ".join(str(form.get(k) or "").split())[:60] for k in ("cap2", "cap1", "cap0")]
+        obj.score_caps = "\n".join(caps) if any(caps) else ""
+    if "drag" in form:  # the drag-on-tablet task drawn in the editor
+        from .. import dragq
+
+        obj.drag = dragq.clean(form.get("drag"))
+    if any(k in form for k in ("talk1_en", "talk1_zh", "talk0_en", "talk0_zh")):  # what to tell parents when not fully right
+        obj.talk = qbank.talk_clean(form)
+    if "evidence" in form:  # developmental-stage evidence rules (the small table in the form)
+        from .. import devstage
+
+        obj.evidence = devstage.clean(form.get("evidence"))
     if qtype_allowed:
         tm = str(form.get("trial_max") or "").strip()
         qbank.apply_qtype(obj, form.get("qtype"), int(tm) if tm.isdigit() and 0 < int(tm) <= 30 else None)

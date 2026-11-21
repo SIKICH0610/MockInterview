@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Body, Depends, Request
 from fastapi.responses import RedirectResponse, Response, StreamingResponse
 from sqlalchemy.orm import Session
 
@@ -65,6 +65,13 @@ def _changed_after_review(db, reviews):
         if rows:
             out[stid] = (len(rows), max(r[0] for r in rows))
     return out
+
+
+def _stage_guide(stage):
+    from ..guides import stage_guide
+    from ..i18n import cur_lang
+
+    return stage_guide(stage, zh=cur_lang() == "zh")
 
 
 def _may_open(db, teacher, s):
@@ -197,6 +204,7 @@ def stage_mode(
             "my_groups": [g for g in groups if g.teacher_id == teacher.id],
             "other_groups": [g for g in groups if g.teacher_id != teacher.id],
             "viewing_other": bool(group and group.teacher_id != teacher.id),
+            "guide": _stage_guide(stage),
             "group": group,
             "students": students,
             "stage": stage,
@@ -270,7 +278,74 @@ def live_version(sid: int, request: Request, db: Session = Depends(get_db)):
     if not can_open_session(db, request.state.teacher, sid):
         return Response(status_code=403)
 
-    return {"v": live.version(db, sid)}
+    v, rv = live.versions(db, sid)
+    return {"v": v, "rv": rv}
+
+
+PRESENCE_PAGES = ("stage", "student", "list", "review", "grouping")
+
+
+@router.post("/live/{sid}/beat")
+def live_beat(sid: int, request: Request, payload: dict = Body(...), db: Session = Depends(get_db)):
+    """An open page says "still here" (about every 20 s): which page, and which version of the
+    groups it shows. The grouping board reads this to show who is online (admin.session_presence)."""
+    import re
+    from datetime import datetime
+
+    from sqlalchemy.exc import IntegrityError
+
+    from ..models import Presence
+    from ..perm import can_open_session
+
+    me = request.state.teacher
+    if not can_open_session(db, me, sid):
+        return Response(status_code=403)
+    if getattr(request.state, "admin_return", False):
+        return {"ok": True}  # an admin looking through a teacher's account is not that teacher being online
+    cid = re.sub(r"[^A-Za-z0-9]", "", str(payload.get("cid") or ""))[:24]
+    page = str(payload.get("page") or "")
+    if len(cid) < 8 or page not in PRESENCE_PAGES:
+        return Response(status_code=400)
+
+    def _int(v):
+        try:
+            return int(v) if v not in (None, "") else None
+        except (TypeError, ValueError):
+            return None
+
+    try:
+        row = db.get(Presence, cid)
+        if row is None:
+            row = Presence(client_id=cid)
+            db.add(row)
+        row.teacher_id, row.session_id, row.page = me.id, sid, page
+        row.stage = str(payload.get("stage") or "")[:80]
+        row.group_id, row.student_id = _int(payload.get("group_id")), _int(payload.get("student_id"))
+        row.rv = _int(payload.get("rv")) or 0
+        row.seen_at = datetime.now()
+        db.commit()
+    except IntegrityError:  # the same tab sent two first beats at once
+        db.rollback()
+    return {"ok": True}
+
+
+@router.get("/live/{sid}/where")
+def live_where(sid: int, request: Request, ids: str = "", db: Session = Depends(get_db)):
+    """Where children are now (name, group, teacher): for the notice a page shows after the groups changed."""
+    from ..perm import can_open_session
+
+    if not can_open_session(db, request.state.teacher, sid):
+        return Response(status_code=403)
+    want = [int(x) for x in ids.split(",") if x.strip().isdigit()][:40]
+    if not want:
+        return {"items": []}
+    names = {x.id: x.name for x in db.query(Teacher).all()}
+    items = []
+    for st in db.query(Student).filter(Student.session_id == sid, Student.id.in_(want)).all():
+        g = st.group
+        items.append({"id": st.id, "name": st.name, "group": g.name if g else "",
+                      "teacher": names.get(g.teacher_id, "") if g and g.teacher_id else ""})
+    return {"items": items}
 
 
 @router.get("/history")
@@ -286,6 +361,18 @@ def history_fragment(request: Request, student_id: int, kind: str = "", ref: str
                           ref_prefix=ref_prefix or None, limit=100)
     return templates.TemplateResponse(request, "_history_list.html",
                                       {"entries": audit.describe(db, entries), "show_child": False})
+
+
+@router.get("/dragasset/{aid}")
+def drag_asset(aid: int, db: Session = Depends(get_db)):
+    """A picture of a drag-on-tablet task. Never changes once stored, so tablets may keep it."""
+    from ..models import DragAsset
+
+    a = db.get(DragAsset, aid)
+    if not a:
+        return Response(status_code=404)
+    return Response(content=a.data, media_type=a.mime,
+                    headers={"Cache-Control": "private, max-age=604800, immutable", "X-Content-Type-Options": "nosniff"})
 
 
 @router.get("/media/{mid}")
@@ -355,7 +442,7 @@ def student_list(request: Request, session_id: int, db: Session = Depends(get_db
 
 
 @router.get("/review")
-def review_mode(request: Request, session_id: int, db: Session = Depends(get_db)):
+def review_mode(request: Request, session_id: int, view: str = "", db: Session = Depends(get_db)):
     s = db.get(AssessSession, session_id)
     teacher = request.state.teacher
     if not s:
@@ -366,8 +453,16 @@ def review_mode(request: Request, session_id: int, db: Session = Depends(get_db)
         return _gate_redirect(session_id, teacher)
 
     allowed = _allowed_groups(db, session_id, teacher)
+    counts = None  # admins who also teach a group: (mine, everyone) for the "My group / Everyone" switch
     if teacher.role == "admin":
         students = db.query(Student).filter_by(session_id=session_id).all()
+        mine = [g for g in allowed if g.teacher_id == teacher.id]
+        if mine:
+            mine_ids = {g.id for g in mine}
+            counts = (sum(1 for st in students if st.group_id in mine_ids), len(students))
+            if view != "all":  # their own children first: that is who they talk to parents about
+                view, allowed = "mine", mine
+                students = [st for st in students if st.group_id in mine_ids]
     else:
         students = [st for g in allowed for st in g.students]
     ids = [st.id for st in students]
@@ -394,7 +489,7 @@ def review_mode(request: Request, session_id: int, db: Session = Depends(get_db)
     ev_counts = {}
     if ids:
         for ev in db.query(Event).filter(Event.student_id.in_(ids)).all():
-            ev_counts[ev.student_id] = ev_counts.get(ev.student_id, 0) + 1
+            ev_counts[ev.student_id] = ev_counts.get(ev.student_id, 0) + (ev.count or 1)  # times distracted, not records
 
     reviews = {}
     if ids:
@@ -420,7 +515,7 @@ def review_mode(request: Request, session_id: int, db: Session = Depends(get_db)
         members = sorted([m for m in students if m.group_id == g.id], key=lambda m: (m.level, m.name))
         if members:
             roster.append((g.name, members))
-    if teacher.role == "admin":
+    if teacher.role == "admin" and view != "mine":
         ungrouped = sorted([m for m in students if not m.group_id], key=lambda m: (m.level, m.name))
         if ungrouped:
             roster.append((None, ungrouped))
@@ -440,6 +535,8 @@ def review_mode(request: Request, session_id: int, db: Session = Depends(get_db)
             "s": s,
             "teacher": teacher,
             "roster": roster,
+            "view": view,
+            "view_counts": counts,
             "codes": codes,
             "questions": questions,
             "records": records,

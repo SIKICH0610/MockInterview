@@ -30,9 +30,9 @@ def _spec():
         return o.stage or ""
 
     return {
-        ItemRecord: ("score", ("status", "academic", "expression", "trial", "note"), lambda o: o.code),
+        ItemRecord: ("score", ("status", "academic", "expression", "trial", "indep", "note", "in_chinese"), lambda o: o.code),
         StageObs: ("stage", ("response", "note"), stage_ref),
-        Event: ("event", ("category", "stage", "points", "reason"), lambda o: o.category or ""),
+        Event: ("event", ("category", "stage", "count", "followed", "points", "reason"), lambda o: o.category or ""),
         Review: ("review", (), lambda o: ""),
         Summary: ("comment", ("text", "text_zh"), lambda o: ""),
         Student: ("roster", ("name", "level", "group_id", "parent_email", "external_id"), lambda o: ""),

@@ -6,9 +6,14 @@
 <div class="rp-statbar">
   <div class="rp-stat"><div class="rp-stat-num">{{ d.mine }}</div><div class="rp-stat-cap">{{ R.cap_score }}{{ max_label }}</div></div>
   <div class="rp-stat"><div class="rp-stat-num">{{ d.avg if d.avg is not none else '—' }}</div><div class="rp-stat-cap">{{ avg_cap }}</div></div>
-  <div class="rp-stat"><div class="rp-stat-num">{{ d.rank if d.rank else '—' }}</div><div class="rp-stat-cap">{{ R.cap_rank }}</div></div>
+  <div class="rp-stat"><div class="rp-stat-num">{{ d.rank if d.rank else '—' }}</div><div class="rp-stat-cap">{{ rank_cap }}</div></div>
   <div class="rp-stat"><div class="rp-stat-num">{{ d.top if d.top else '—' }}</div><div class="rp-stat-cap">{{ R.cap_standing }}</div></div>
 </div>
+{% endmacro %}
+
+{% macro means_cell(q, r) %}
+<td class="rp-means">{% set got = r.academic if r and r.status == 'scored' and r.academic is not none else none %}
+  {% for v, text in score_means[q.code] %}<div class="{{ 'rp-means-on' if v == got }}"><b>{{ v }}</b> {{ text }}</div>{% endfor %}</td>
 {% endmacro %}
 
 {% macro pagehead(title, subtitle) %}
@@ -17,7 +22,7 @@
     <div class="rp-pagetitle">{{ title }}</div>
     <div class="rp-pagesub">{{ subtitle }}</div>
   </div>
-  <div class="rp-brand-mini"><span class="brand-main">Think Academy</span> <span class="brand-chip">SILICON VALLEY</span></div>
+  <div class="rp-brand-mini"><img class="brand-logo brand-logo-sm" src="{{ asset_url('logo.png') }}" alt="Think Academy Silicon Valley" width="1200" height="113"></div>
 </div>
 {% endmacro %}
 
@@ -28,11 +33,11 @@
 {% endmacro %}
 
 {% macro practice_page(rows, subtitle) %}
-{% if rows | selectattr('0.key_ability') | list or rows | selectattr('0.practice') | list or rows | selectattr('0.home_game') | list %}
+{% if rows | selectattr('0.key_ability') | list or rows | selectattr('0.practice') | list or rows | selectattr('0.ta_lesson') | list %}
   <section class="rp-page rp-hp">
     {{ pagehead(R.hp_title, subtitle) }}
     <table class="rp-table rp-hp-table">
-      <tr><th>{{ R.hp_th_key }}</th><th>{{ R.hp_th_practice }}</th><th>{{ R.hp_th_game }}</th></tr>
+      <tr><th>{{ R.hp_th_key }}</th><th>{{ R.hp_th_course }}</th><th>{{ R.hp_th_practice }}</th></tr>
       {% for q, r in rows %}
       {% set focus = r and ((r.status == 'scored' and r.academic is not none and r.academic < 2) or r.status == 'not_completed') %}
       <tr class="{{ 'rp-hp-focus' if focus }}">
@@ -41,15 +46,12 @@
           {% if q.key_ability %}<div class="rp-hp-key">{{ q.key_ability }}</div>{% endif %}
         </td>
         <td>
-          {% if q.practice %}<div class="rp-hp-text">{{ q.practice }}</div>{% endif %}
-          {% if q.practice_answer %}<div class="rp-hp-check"><b>{{ R.hp_check }}</b> {{ q.practice_answer }}</div>{% endif %}
+          {% if q.ta_lesson %}<div class="rp-hp-game">{{ q.ta_lesson }}</div>{% endif %}
+          {% if q.ta_topic %}<div class="rp-hp-text">{{ q.ta_topic }}</div>{% endif %}
         </td>
         <td>
-          {% if q.home_game %}
-          {% set lines = q.home_game.split('\n') %}
-          <div class="rp-hp-game">{{ lines[0] }}</div>
-          <div class="rp-hp-text">{{ lines[1:] | join('\n') }}</div>
-          {% endif %}
+          {% if q.practice %}<div class="rp-hp-text">{{ q.practice }}</div>{% endif %}
+          {% if q.practice_answer %}<div class="rp-hp-check"><b>{{ R.hp_check }}</b> {{ q.practice_answer }}</div>{% endif %}
         </td>
       </tr>
       {% endfor %}
@@ -103,8 +105,7 @@
   <!-- ========== COVER ========== -->
   <section class="rp-page rp-cover">
     <div class="rp-cover-brand">
-      <span class="brand-main">Think Academy</span>
-      <span class="brand-chip">SILICON VALLEY</span>
+      <img class="brand-logo brand-logo-lg" src="{{ asset_url('logo.png') }}" alt="Think Academy Silicon Valley" width="1200" height="113">
     </div>
     <div class="rp-cover-head">
       <h1 class="rp-cover-title">{{ R.cover_title.format(lv=st.level) | safe }}</h1>
@@ -122,6 +123,7 @@
           {% if st.group %}<tr><td>{{ R.group }}</td><td>{{ st.group.name }}</td></tr>{% endif %}
           {% if involved %}<tr><td>{{ R.assessed_by }}</td><td>{{ involved | join(', ') }}</td></tr>{% endif %}
           <tr><td>{{ R.report_date }}</td><td>{{ today }}</td></tr>
+          {% if challenge_class %}<tr class="rp-cover-rec"><td>{{ R.rec_class }}</td><td><b>{{ challenge_class }}</b></td></tr>{% endif %}
         </table>
       </div>
       <img class="rp-mascot rp-mascot-cover" src="{{ asset_url('mascot.png') }}" alt="" width="348" height="394">
@@ -259,6 +261,51 @@
     <p class="rp-foot">{{ R.ab_foot.format(n=expr_qn, m=expr_max) }}</p>
   </section>
 
+  <!-- ========== 02b LEARNING FOUNDATIONS REFERENCE (PTKLF) ========== -->
+  {% if dev_rows %}
+  <section class="rp-page rp-dev">
+    {{ pagehead(R.dev_title, R.dev_sub) }}
+    <div class="rp-dev-in">
+    <p class="rp-explain">{{ R.dev_explain }}
+      <a class="rp-dev-link" href="{{ stages_url }}" target="_blank" rel="noopener">{{ R.dev_link }}</a>
+      <span class="rp-dev-url">{{ stages_url.split('://')[-1].split('/')[0] }}</span></p>
+    <div class="rp-dev-legend">
+      <span><i class="rp-dv-sw rp-dv-top"></i>{{ R.dev_lg_top }}</span>
+      <span><i class="rp-dv-sw rp-dv-on"></i>{{ R.dev_lg_on }}</span>
+      <span><i class="rp-dv-sw rp-dv-part"></i>{{ R.dev_lg_part }}</span>
+      <span><i class="rp-dv-sw"></i>{{ R.dev_lg_none }}</span>
+      <span class="rp-dev-key">{{ R.dev_lg_child.format(lv=st.level) }}</span>
+    </div>
+    {% for m in dev_rows %}
+    <div class="rp-dev-row">
+      <div class="rp-dev-name">
+        <b>{{ m.name }}</b>
+        {% if m.code %}<div class="rp-dev-code">{{ m.code }}</div>{% endif %}
+      </div>
+      <div class="rp-dev-body">
+        {% if m.ladder %}
+        <div class="rp-dev-ladder">
+          {% for s in m.ladder %}<span class="rp-dv-seg {{ 'rp-dv-' ~ s.state if s.state }} {{ 'rp-dv-child' if s.child }}"><b>{{ s.name }}{% if s.child %} ★{% endif %}</b><small>{{ s.age }}</small></span>{% endfor %}
+        </div>
+        {% endif %}
+        <div class="rp-dev-top">{% if m.ladder %}<span>{% if m.top %}{{ R.dev_top.format(name=m.top) }}{% else %}{{ R.dev_top_none }}{% endif %}</span>{% endif %}
+          {%- if not m.ladder %}<span class="rp-tag rp-dev-pill">{{ R.dev_record_only }}</span>
+          {%- elif m.single %}<span class="rp-tag rp-dev-pill">{{ R.dev_single }}</span>{% endif %}
+          {%- for ref in m.refs %}<span class="rp-tag rp-dev-pill">{{ ref }}</span>{% endfor %}</div>
+        <ul class="rp-dev-items">
+          {% for it in m['items'] %}
+          <li class="rp-dv-{{ it.state }}">{% if it.state == 'none' %}{{ R.dev_not }} {% endif %}{{ it.text }}{% if it.state == 'part' %} <span class="rp-tag rp-tag-mid">{{ R.dev_part }}</span>{% endif %} <span class="rp-dev-task">{{ it.task }}</span></li>
+          {% endfor %}
+        </ul>
+        {% if m.next %}<div class="rp-dev-next"><b>{{ R.dev_next }}</b> {{ m.next }}</div>{% endif %}
+      </div>
+    </div>
+    {% endfor %}
+    <p class="rp-foot">{{ R.dev_foot }}</p>
+    </div>
+  </section>
+  {% endif %}
+
   <!-- ========== 03 TASK-BY-TASK ========== -->
   <section class="rp-page">
     {{ pagehead(R.task_title, R.task_sub) }}
@@ -269,7 +316,7 @@
     {{ statbar(dims.math, R.max_fmt.format(math_max), cmp_label) }}
     {{ analysisbox(analysis.math) }}
     <table class="rp-table">
-      <tr><th>#</th><th>{{ R.th_task }}</th><th>{{ R.th_result }}</th><th>{{ R.th_expr }}</th>{% if math_has_notes %}<th>{{ R.th_notes }}</th>{% endif %}</tr>
+      <tr><th>#</th><th>{{ R.th_task }}</th><th>{{ R.th_result }}</th><th>{{ R.th_means }}</th><th>{{ R.th_expr }}</th>{% if math_has_notes %}<th>{{ R.th_notes }}</th>{% endif %}</tr>
       {% for q, r in math_rows %}
       <tr>
         <td><b class="qcode">{{ q.code }}</b></td>
@@ -277,12 +324,12 @@
         <td>
           {% if r and r.status == 'scored' and r.academic is not none %}
             <b>{{ r.academic }}</b> / 2
-            {% if r.academic == 2 %}<span class="rp-tag rp-tag-good">{{ R.tag_indep }}</span>
-            {% elif r.academic == 1 %}<span class="rp-tag rp-tag-mid">{{ R.tag_guided }}</span>{% endif %}
           {% elif r and r.status == 'not_observed' %}<span class="rp-no">{{ R.not_observed }}</span>
           {% elif r and r.status == 'not_completed' %}<span class="rp-no">{{ R.not_completed }}</span>
           {% else %}<span class="rp-no">—</span>{% endif %}
+          {% if r and r.in_chinese %}<div class="rp-zh-line"><span class="rp-tag rp-tag-zh"><i aria-hidden="true">中</i>{{ R.tag_zh }}</span></div>{% endif %}
         </td>
+        {{ means_cell(q, r) }}
         <td>
           {% if q.has_expression %}
             {% if r and r.expression is not none %}<b>{{ r.expression }}</b> / 2{% else %}<span class="rp-no">—</span>{% endif %}
@@ -292,6 +339,8 @@
       </tr>
       {% endfor %}
     </table>
+    {% set zh_m = math_rows | selectattr('1') | selectattr('1.in_chinese') | map(attribute='0.code') | list %}
+    {% if zh_m %}<p class="rp-zh-note"><span class="rp-tag rp-tag-zh"><i aria-hidden="true">中</i>{{ R.tag_zh }}</span> {{ R.zh_note.format(codes=zh_m | join(', ')) }}</p>{% endif %}
 
     </div>
   </section>
@@ -303,8 +352,9 @@
     <div class="rp-dim-head">{{ R.sec_eng }}</div>
     {{ statbar(dims.eng, R.max_fmt.format(eng_max), cmp_label) }}
     {{ analysisbox(analysis.eng) }}
+    {% set eng_counted = eng_rows | selectattr('0.trial_max') | rejectattr('0.qtype', 'equalto', 'drag') | list | length > 0 %}
     <table class="rp-table">
-      <tr><th>#</th><th>{{ R.th_task }}</th><th>{{ R.th_result }}</th>{% if eng_has_notes %}<th>{{ R.th_notes }}</th>{% endif %}</tr>
+      <tr><th>#</th><th>{{ R.th_task }}</th><th>{{ R.th_result }}</th><th>{{ R.th_means }}</th>{% if eng_counted %}<th>{{ R.th_indep }}</th>{% endif %}{% if eng_has_notes %}<th>{{ R.th_notes }}</th>{% endif %}</tr>
       {% for q, r in eng_rows %}
       <tr>
         <td><b class="qcode">{{ q.code }}</b></td>
@@ -312,19 +362,49 @@
         <td>
           {% if r and r.status == 'scored' and r.academic is not none %}
             <b>{{ r.academic }}</b> / 2
-            {% if r.academic == 2 %}<span class="rp-tag rp-tag-good">{{ R.tag_indep }}</span>
-            {% elif r.academic == 1 %}<span class="rp-tag rp-tag-mid">{{ R.tag_guided }}</span>{% endif %}
           {% elif r and r.status == 'not_observed' %}<span class="rp-no">{{ R.not_observed }}</span>
           {% elif r and r.status == 'not_completed' %}<span class="rp-no">{{ R.not_completed }}</span>
           {% else %}<span class="rp-no">—</span>{% endif %}
           {% if q.trial_max and r and r.trial is not none %}<div class="muted small">{{ R.n_correct.format(t=r.trial, m=q.trial_max) }}</div>{% endif %}
+          {% if r and r.in_chinese %}<div class="rp-zh-line"><span class="rp-tag rp-tag-zh"><i aria-hidden="true">中</i>{{ R.tag_zh }}</span></div>{% endif %}
         </td>
+        {{ means_cell(q, r) }}
+        {% if eng_counted %}
+        {% if q.trial_max and q.qtype != 'drag' %}
+        <td class="rp-means rp-indep">{% set got = r.indep if r and r.status == 'scored' and r.indep is not none else none %}
+          <div class="rp-indep-val">{% if got is not none %}<b>{{ got }}</b> / 2{% else %}<span class="rp-no">—</span>{% endif %}</div>
+          {% for text in R.means_std %}<div class="{{ 'rp-means-on' if (2 - loop.index0) == got }}"><b>{{ 2 - loop.index0 }}</b> {{ text }}</div>{% endfor %}</td>
+        {% else %}<td class="muted small">—</td>{% endif %}
+        {% endif %}
         {% if eng_has_notes %}<td class="muted small">{{ r.note if r and r.note }}</td>{% endif %}
       </tr>
       {% endfor %}
     </table>
+    {% if eng_counted %}<p class="rp-zh-note">{{ R.indep_foot }}</p>{% endif %}
+    {% set zh_e = eng_rows | selectattr('1') | selectattr('1.in_chinese') | map(attribute='0.code') | list %}
+    {% if zh_e %}<p class="rp-zh-note"><span class="rp-tag rp-tag-zh"><i aria-hidden="true">中</i>{{ R.tag_zh }}</span> {{ R.zh_note.format(codes=zh_e | join(', ')) }}</p>{% endif %}
     </div>
   </section>
+
+  <!-- ========== 03c WHERE POINTS WERE LOST ========== -->
+  {% set lost = talk_rows | selectattr('2') | list %}
+  {% for part in lost | batch(7) %}{# at most seven notes to a sheet, so a long list never runs off the page #}
+  <section class="rp-page rp-lost">
+    {{ pagehead(R.lost_title ~ (R.lost_more if not loop.first else ''), R.lost_sub) }}
+    {% if loop.first %}<p class="rp-explain">{{ R.lost_explain }}</p>{% endif %}
+    <table class="rp-table rp-lost-table">
+      <tr><th>#</th><th>{{ R.th_ability }}</th><th>{{ R.th_result }}</th><th>{{ R.th_lost }}</th></tr>
+      {% for q, r, text in part %}
+      <tr>
+        <td><b class="qcode">{{ q.code }}</b></td>
+        <td>{{ q.ability if rlang == 'en' else ability_names.get(q.ability, q.ability) }}</td>
+        <td><b>{{ r.academic }}</b> / 2{% if q.trial_max and q.qtype != 'drag' and r.trial is not none %}<div class="muted small">{{ R.n_correct.format(t=r.trial, m=q.trial_max) }}</div>{% endif %}</td>
+        <td>{{ text }}</td>
+      </tr>
+      {% endfor %}
+    </table>
+  </section>
+  {% endfor %}
 
   <!-- ========== 04 GROUP ACTIVITIES + SEL ========== -->
   <section class="rp-page">
@@ -360,13 +440,16 @@
       {% endfor %}
     </div>
 
-    {% if story_stage and stage_dim_values.get(story_stage) %}
+    {% if story_stage and (stage_dim_values.get(story_stage) or story_note) %}
     <div class="rp-dim-head" style="margin-top:14px">{{ R.circle_overall.format(stage=stage_disp.get(story_stage, story_stage)) }}</div>
+    {% if stage_dim_values.get(story_stage) %}
     <div class="rp-dims rp-dims-row">
       {% for label, value in stage_dim_values[story_stage] %}
       <div class="rp-dim-line"><span class="rp-dim-k">{{ label }}</span><b>{{ value }}</b></div>
       {% endfor %}
     </div>
+    {% endif %}
+    {% if story_note %}<div class="muted small rp-story-note">{{ story_note }}</div>{% endif %}
     {% endif %}
 
     {% if circle %}
@@ -403,7 +486,7 @@
         <td class="muted small">{{ stage_disp.get(ev.stage, ev.stage) }}</td>
         <td>{{ R.area_sel if ev.category == 'SEL' else R.area_cs }}</td>
         <td class="rp-ded">&minus;{{ ev.points }}</td>
-        <td>{{ ev.reason }}</td>
+        <td>{% if ev.followed %}<b>{{ R.dz_item.format(n=ev.count or 1) }}</b> · {{ R.dz_yes if ev.followed == 'yes' else R.dz_no }}{% if ev.reason %}<div class="muted small">{{ ev.reason }}</div>{% endif %}{% else %}{{ ev.reason }}{% endif %}</td>
         <td class="muted small">{{ ev.support }}</td>
       </tr>
       {% endfor %}
@@ -422,8 +505,7 @@
   <section class="rp-page rp-back">
     <img class="rp-mascot rp-mascot-back" src="{{ asset_url('mascot.png') }}" alt="" width="348" height="394">
     <div class="rp-back-brand">
-      <span class="brand-main" style="font-size:26px">Think Academy</span>
-      <span class="brand-chip">SILICON VALLEY</span>
+      <img class="brand-logo brand-logo-lg" src="{{ asset_url('logo.png') }}" alt="Think Academy Silicon Valley" width="1200" height="113">
     </div>
     <div class="rp-back-line">{{ R.back_line }}</div>
     <div class="rp-back-contact">

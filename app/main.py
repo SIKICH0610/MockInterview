@@ -31,7 +31,7 @@ async def lang_middleware(request: Request, call_next):
         current_lang.reset(token)
 
 
-PUBLIC_PREFIXES = ("/static/", "/lang/", "/favicon.ico")
+PUBLIC_PREFIXES = ("/static/", "/lang/", "/favicon.ico", "/stages")
 
 
 @app.middleware("http")
@@ -157,6 +157,15 @@ def _startup_setup():
                 os.environ.get("MI_INITIAL_ADMIN_PASSWORD") or "admin123"
             )
             db.commit()
+        # 11.15 feedback: the last Cutting & Drawing rating is "Persistence & Recovery" (was "General Attitude").
+        # Same rating (same key, same saved values) under its new name, in every interview that still has the old one.
+        from .models import StageDimDef
+
+        for row in db.query(StageDimDef).filter(StageDimDef.label == "General Attitude").all():
+            row.label = "Persistence & Recovery"
+            if (row.label_zh or "") in ("", "整体态度"):
+                row.label_zh = "坚持与恢复"
+        db.commit()
         from .perm import ensure_owner
 
         ensure_owner(db)

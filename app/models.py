@@ -122,6 +122,11 @@ class Question(Base):
     trial_max = Column(Integer, nullable=True)  # sub-trial count (/6, /3)
     # what the task assesses + follow-up practice for families (shown on the report's last pages)
     key_ability = Column(Text, default="")
+
+    score_caps = Column(Text, default="")  # optional captions under the 2 / 1 / 0 task buttons: three lines, "English | 中文"
+    drag = Column(Text, default="")  # drag-on-tablet task (JSON, see app/dragq.py); "" = none
+    evidence = Column(Text, default="")  # developmental-stage evidence rules (JSON, see app/devstage.py); "" = none
+    talk = Column(Text, default="")  # what to tell parents when the task was not fully right (JSON, see bank.talk_of); "" = none
     practice = Column(Text, default="")  # extra practice questions
     practice_answer = Column(Text, default="")  # answers / what to check
     home_game = Column(Text, default="")  # at-home hands-on game
@@ -209,7 +214,13 @@ class ItemRecord(Base):
     guided = Column(Boolean, default=False)  # reserved
     expression = Column(Integer, nullable=True)  # 0/1/2 for M02-M06
     trial = Column(Integer, nullable=True)  # correct sub-trial count
+    # counting tasks carry two scores: `academic` follows from the count (and is the one in the totals);
+    # `indep` is how independently the child did it - 2 on their own, 1 after guidance, 0 not yet (shown, not totalled)
+    indep = Column(Integer, nullable=True)
     note = Column(Text, default="")
+    in_chinese = Column(Boolean, default=False)  # the child answered this task in Chinese (shown on the report)
+    # drag-on-tablet task: what the child did and how it was scored (JSON, app/dragq.py)
+    drag = Column(Text, default="")
     teacher_id = Column(Integer, ForeignKey("teachers.id"), nullable=True)
     rev = Column(Integer, default=1)
     updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)
@@ -228,6 +239,10 @@ class Event(Base):
     stage = Column(String(32), default="")
     code = Column(String(8), nullable=True)  # optional link to a question
     points = Column(Integer, default=1)  # points deducted
+    # distraction record (11.15): how many times, and whether the child followed after a reminder.
+    # followed is None on older free-form events (category / points / reason typed by the teacher).
+    count = Column(Integer, default=1)
+    followed = Column(String(8), nullable=True)  # "yes" / "no"
     reason = Column(Text, default="")
     support = Column(Text, default="")
     teacher_id = Column(Integer, ForeignKey("teachers.id"), nullable=True)
@@ -410,6 +425,11 @@ class BankQuestion(Base):
     trial_max = Column(Integer, nullable=True)
     # what the task assesses + follow-up practice for families (shown on the report's last pages)
     key_ability = Column(Text, default="")
+
+    score_caps = Column(Text, default="")  # optional captions under the 2 / 1 / 0 task buttons: three lines, "English | 中文"
+    drag = Column(Text, default="")  # drag-on-tablet task (JSON, see app/dragq.py); "" = none
+    evidence = Column(Text, default="")  # developmental-stage evidence rules (JSON, see app/devstage.py); "" = none
+    talk = Column(Text, default="")  # what to tell parents when the task was not fully right (JSON, see bank.talk_of); "" = none
     practice = Column(Text, default="")  # extra practice questions
     practice_answer = Column(Text, default="")  # answers / what to check
     home_game = Column(Text, default="")  # at-home hands-on game
@@ -506,6 +526,21 @@ class SourcePdf(Base):
     created_at = Column(DateTime, default=datetime.now)
 
 
+class DragAsset(Base):
+    """A picture used in a drag-on-tablet task (background or piece). Tasks refer to it by id, so a
+    question copied from the bank into an interview shares the same pictures; rows are never edited."""
+
+    __tablename__ = "drag_assets"
+    id = Column(Integer, primary_key=True)
+    name = Column(String(255), default="")
+    mime = Column(String(64), nullable=False)
+    data = Column(LargeBinary, nullable=False)
+    w = Column(Integer, default=0)
+    h = Column(Integer, default=0)
+    created_by = Column(Integer, nullable=True)
+    created_at = Column(DateTime, default=datetime.now)
+
+
 class LiveVersion(Base):
     """A counter per session, bumped on every saved change (scores, observations,
     events, reviews, comments, roster). Pages compare it to know when to refresh."""
@@ -513,7 +548,27 @@ class LiveVersion(Base):
     __tablename__ = "live_versions"
     session_id = Column(Integer, primary_key=True)
     v = Column(Integer, nullable=False, default=0)
+    # bumped only when the groups change (who is in which group, a group's teacher, a child's grade):
+    # pages use it to report whether they already show the latest groups
+    rv = Column(Integer, default=0)
     updated_at = Column(DateTime, default=datetime.now)
+
+
+class Presence(Base):
+    """Which scoring pages are open right now: one row per browser tab, refreshed about every
+    20 seconds while the tab is visible (POST /wb/live/{sid}/beat). No foreign keys on purpose:
+    rows are short-lived and must never block deleting a session or an account."""
+
+    __tablename__ = "presence"
+    client_id = Column(String(24), primary_key=True)
+    teacher_id = Column(Integer, nullable=False, index=True)
+    session_id = Column(Integer, nullable=False, index=True)
+    page = Column(String(16), default="")  # stage / student / list / review / grouping
+    stage = Column(String(80), default="")
+    group_id = Column(Integer, nullable=True)
+    student_id = Column(Integer, nullable=True)
+    rv = Column(Integer, default=0)  # the groups version this tab shows
+    seen_at = Column(DateTime, default=datetime.now)
 
 
 class ChangeLog(Base):
